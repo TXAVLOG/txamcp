@@ -148,19 +148,44 @@ function findProjectRoot(startDir, steps = 0) {
   return findProjectRoot(parent, steps + 1);
 }
 
-const PROJECT_ROOT = findProjectRoot(process.cwd());
+let CURRENT_PROJECT_ROOT = findProjectRoot(process.cwd());
 
 // --- PATH NORMALIZATION ---
 function getAbsolutePath(receivedPath) {
   const normalized = path.normalize(receivedPath);
   const absolute = path.isAbsolute(normalized) 
     ? normalized 
-    : path.resolve(PROJECT_ROOT, normalized);
+    : path.resolve(CURRENT_PROJECT_ROOT, normalized);
   
   if (!existsSync(absolute)) {
     throw new Error(`File or directory not found at: ${absolute}`);
   }
   return absolute;
+}
+
+function updateRootFromPath(filePath) {
+  try {
+    if (path.isAbsolute(filePath)) {
+      const dir = existsSync(filePath) && (readFileSync(filePath, {flag:'r'}).length >= 0) // check if it's a file
+        ? path.dirname(filePath) 
+        : filePath;
+      
+      const potentialRoot = findProjectRoot(dir);
+      if (potentialRoot && potentialRoot !== CURRENT_PROJECT_ROOT) {
+        CURRENT_PROJECT_ROOT = potentialRoot;
+        process.stderr.write(`[TXAMCP] Dynamic Root Update: ${CURRENT_PROJECT_ROOT}\n`);
+      }
+    }
+  } catch (err) {
+    // If it's a directory or fails, just try the path itself
+    try {
+      const potentialRoot = findProjectRoot(filePath);
+      if (potentialRoot && potentialRoot !== CURRENT_PROJECT_ROOT) {
+        CURRENT_PROJECT_ROOT = potentialRoot;
+        process.stderr.write(`[TXAMCP] Dynamic Root Update: ${CURRENT_PROJECT_ROOT}\n`);
+      }
+    } catch (e) {}
+  }
 }
 
 // --- GIT ROOT DISCOVERY ---
@@ -221,8 +246,8 @@ const TOOL_IMPLEMENTATIONS = {
         description: "Lấy thông tin Git của thư mục hiện tại (Remote, Branch, Status).",
         schema: {},
         handler: async () => {
-            const gitRoot = await getGitRoot(PROJECT_ROOT);
-            if (!gitRoot) return { content: [{ type: "text", text: `⚠️ CẢNH BÁO: Thư mục ${PROJECT_ROOT} và các thư mục cha không phải Git repository. Nếu bạn định thực hiện lệnh git, hãy chắc chắn rằng bạn đang ở đúng thư mục dự án.` }] };
+            const gitRoot = await getGitRoot(CURRENT_PROJECT_ROOT);
+            if (!gitRoot) return { content: [{ type: "text", text: `⚠️ CẢNH BÁO: Thư mục ${CURRENT_PROJECT_ROOT} và các thư mục cha không phải Git repository. Nếu bạn định thực hiện lệnh git, hãy chắc chắn rằng bạn đang ở đúng thư mục dự án.` }] };
             const [remote, branch, status] = await Promise.all([
                 execPromise("git remote get-url origin", { cwd: gitRoot }).then(r => r.stdout.trim()).catch(() => "N/A"),
                 execPromise("git rev-parse --abbrev-ref HEAD", { cwd: gitRoot }).then(r => r.stdout.trim()).catch(() => "Unknown"),
@@ -239,7 +264,7 @@ const TOOL_IMPLEMENTATIONS = {
         },
         handler: async ({ query, pathFilter }) => {
             const cmd = `git grep -nEi "${query}" -- ${pathFilter || "."}`;
-            const { stdout } = await execPromise(cmd, { cwd: PROJECT_ROOT }).catch(err => ({ stdout: err.stdout }));
+            const { stdout } = await execPromise(cmd, { cwd: CURRENT_PROJECT_ROOT }).catch(err => ({ stdout: err.stdout }));
             return { content: [{ type: "text", text: stdout || "No results." }] };
         }
     },
@@ -261,7 +286,7 @@ const TOOL_IMPLEMENTATIONS = {
             content: z.string().describe("Nội dung mới")
         },
         handler: async ({ filePath, content }) => {
-            const abs = path.resolve(PROJECT_ROOT, filePath);
+            const abs = path.resolve(CURRENT_PROJECT_ROOT, filePath);
             await fs.mkdir(path.dirname(abs), { recursive: true });
             await fs.writeFile(abs, content, "utf-8");
             return { content: [{ type: "text", text: `Successfully wrote to ${filePath}` }] };
@@ -274,7 +299,7 @@ const TOOL_IMPLEMENTATIONS = {
         },
         handler: async ({ dbFile }) => {
             let results = "--- Database Schema Analysis ---\n";
-            const sqlFiles = dbFile ? [getAbsolutePath(dbFile)] : (await execPromise('find . -maxdepth 3 -name "*.sql"', { cwd: PROJECT_ROOT }).then(r => r.stdout.split('\n')).catch(() => []));
+            const sqlFiles = dbFile ? [getAbsolutePath(dbFile)] : (await execPromise('find . -maxdepth 3 -name "*.sql"', { cwd: CURRENT_PROJECT_ROOT }).then(r => r.stdout.split('\n')).catch(() => []));
             for (const file of sqlFiles) {
                 if (!file.trim() || !existsSync(file)) continue;
                 const content = await fs.readFile(file, "utf-8");
@@ -319,7 +344,7 @@ const TOOL_IMPLEMENTATIONS = {
             const cmd = os.platform() === 'win32' 
                 ? `powershell "Get-ChildItem -Path . -Recurse -File | Where-Object { $_.Length -gt ${minSizeMB}MB } | Sort-Object Length -Descending | Select-Object -First 10 | ForEach-Object { '{0} - {1}MB' -f $_.FullName, [Math]::Round($_.Length / 1MB, 2) }"`
                 : `find . -type f ${exclude} -size +${minSizeMB}M -exec ls -lh {} + | sort -rh -k5 | head -n 10`;
-            const { stdout } = await execPromise(cmd, { cwd: PROJECT_ROOT });
+            const { stdout } = await execPromise(cmd, { cwd: CURRENT_PROJECT_ROOT });
             return { content: [{ type: "text", text: `Large Files (> ${minSizeMB}MB):\n${stdout || "No large files found."}` }] };
         }
     },
@@ -330,7 +355,7 @@ const TOOL_IMPLEMENTATIONS = {
             value: z.string().describe("Nội dung cần nhớ")
         },
         handler: async ({ key, value }) => {
-            const memPath = path.join(PROJECT_ROOT, ".txamcp_memory.json");
+            const memPath = path.join(CURRENT_PROJECT_ROOT, ".txamcp_memory.json");
             let memory = {};
             if (existsSync(memPath)) memory = JSON.parse(await fs.readFile(memPath, "utf-8"));
             memory[key] = { value, updated_at: new Date().toISOString() };
@@ -344,7 +369,7 @@ const TOOL_IMPLEMENTATIONS = {
             key: z.string().optional().describe("Khóa định danh (tùy chọn)")
         },
         handler: async ({ key }) => {
-            const memPath = path.join(PROJECT_ROOT, ".txamcp_memory.json");
+            const memPath = path.join(CURRENT_PROJECT_ROOT, ".txamcp_memory.json");
             if (!existsSync(memPath)) return { content: [{ type: "text", text: "No memory found for this project." }] };
             const memory = JSON.parse(await fs.readFile(memPath, "utf-8"));
             if (key) return { content: [{ type: "text", text: memory[key] ? JSON.stringify(memory[key], null, 2) : "Key not found." }] };
@@ -357,7 +382,7 @@ const TOOL_IMPLEMENTATIONS = {
             command: z.string().describe("Lệnh POWERSHELL cần chạy")
         },
         handler: async ({ command }) => {
-            const options = { cwd: PROJECT_ROOT };
+            const options = { cwd: CURRENT_PROJECT_ROOT };
             if (os.platform() === 'win32') {
                 options.shell = 'powershell.exe';
             }
@@ -410,7 +435,7 @@ const TOOL_IMPLEMENTATIONS = {
             const files = ["package.json", "composer.json", "pubspec.yaml", "requirements.txt"];
             let results = "";
             for (const f of files) {
-                const abs = path.join(PROJECT_ROOT, f);
+                const abs = path.join(CURRENT_PROJECT_ROOT, f);
                 if (existsSync(abs)) {
                     const content = await fs.readFile(abs, "utf-8");
                     results += `\n--- ${f} ---\n${content.substring(0, 500)}...\n`;
@@ -423,8 +448,8 @@ const TOOL_IMPLEMENTATIONS = {
         description: "Liệt kê các thư mục làm việc và cấu trúc dự án hiện tại trên WINDOWS.",
         schema: {},
         handler: async () => {
-            const { stdout } = await execPromise(os.platform() === 'win32' ? 'dir /b' : 'ls -F', { cwd: PROJECT_ROOT });
-            return { content: [{ type: "text", text: `Project Root: ${PROJECT_ROOT}\nContents:\n${stdout}` }] };
+            const { stdout } = await execPromise(os.platform() === 'win32' ? 'dir /b' : 'ls -F', { cwd: CURRENT_PROJECT_ROOT });
+            return { content: [{ type: "text", text: `Project Root: ${CURRENT_PROJECT_ROOT}\nContents:\n${stdout}` }] };
         }
     },
     "get_file_info": {
@@ -545,8 +570,8 @@ const TOOL_IMPLEMENTATIONS = {
         description: "Xem trạng thái chi tiết của Git (staged, unstaged changes).",
         schema: {},
         handler: async () => {
-            const gitRoot = await getGitRoot(PROJECT_ROOT);
-            if (!gitRoot) return { content: [{ type: "text", text: `LỖI: Không tìm thấy Git repository tại ${PROJECT_ROOT} hoặc cha của nó.` }], isError: true };
+            const gitRoot = await getGitRoot(CURRENT_PROJECT_ROOT);
+            if (!gitRoot) return { content: [{ type: "text", text: `LỖI: Không tìm thấy Git repository tại ${CURRENT_PROJECT_ROOT} hoặc cha của nó.` }], isError: true };
             const { stdout } = await execPromise("git status", { cwd: gitRoot }).catch((err) => ({ stdout: `Git Error: ${err.message}` }));
             return { content: [{ type: "text", text: stdout }] };
         }
@@ -557,7 +582,7 @@ const TOOL_IMPLEMENTATIONS = {
             count: z.number().default(5).describe("Số lượng commit cần xem")
         },
         handler: async ({ count = 5 }) => {
-            const gitRoot = await getGitRoot(PROJECT_ROOT);
+            const gitRoot = await getGitRoot(CURRENT_PROJECT_ROOT);
             if (!gitRoot) return { content: [{ type: "text", text: `LỖI: Không tìm thấy Git repository.` }], isError: true };
             const { stdout } = await execPromise(`git log -n ${count} --oneline`, { cwd: gitRoot }).catch(() => ({ stdout: "Error fetching git log." }));
             return { content: [{ type: "text", text: stdout }] };
@@ -567,7 +592,7 @@ const TOOL_IMPLEMENTATIONS = {
         description: "Xem các thay đổi hiện tại chưa commit.",
         schema: {},
         handler: async () => {
-            const gitRoot = await getGitRoot(PROJECT_ROOT);
+            const gitRoot = await getGitRoot(CURRENT_PROJECT_ROOT);
             if (!gitRoot) return { content: [{ type: "text", text: `LỖI: Không tìm thấy Git repository.` }], isError: true };
             const { stdout } = await execPromise("git diff", { cwd: gitRoot }).catch(() => ({ stdout: "No changes or error." }));
             return { content: [{ type: "text", text: stdout || "No differences." }] };
@@ -580,14 +605,14 @@ const TOOL_IMPLEMENTATIONS = {
         },
         handler: async ({ pattern }) => {
             // Ưu tiên dùng git ls-files nếu là repo git vì nó cực nhanh
-            const isGit = existsSync(path.join(PROJECT_ROOT, ".git"));
+            const isGit = existsSync(path.join(CURRENT_PROJECT_ROOT, ".git"));
             const cmd = isGit 
                 ? `git ls-files "*${pattern}*"` 
                 : (os.platform() === 'win32' 
                     ? `powershell -Command "Get-ChildItem -Path . -Filter *${pattern}* -Recurse -Name -ErrorAction SilentlyContinue | Select-Object -First 50"`
                     : `find . -name "*${pattern}*" -not -path "*/node_modules/*" -limit 50`);
             
-            const { stdout } = await execPromise(cmd, { cwd: PROJECT_ROOT }).catch(() => ({ stdout: "" }));
+            const { stdout } = await execPromise(cmd, { cwd: CURRENT_PROJECT_ROOT }).catch(() => ({ stdout: "" }));
             return { content: [{ type: "text", text: stdout || "No files found." }] };
         }
     },
@@ -623,7 +648,7 @@ const TOOL_IMPLEMENTATIONS = {
             dirPath: z.string().describe("Đường dẫn thư mục")
         },
         handler: async ({ dirPath }) => {
-            const abs = path.resolve(PROJECT_ROOT, dirPath);
+            const abs = path.resolve(CURRENT_PROJECT_ROOT, dirPath);
             await fs.mkdir(abs, { recursive: true });
             return { content: [{ type: "text", text: `Successfully created directory: ${dirPath}` }] };
         }
