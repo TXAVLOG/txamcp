@@ -54,15 +54,35 @@ async function verifyWithHub() {
 
     const data = await response.json();
     if (!data.success) {
-      throw new Error(`TXAMCP [${data.code || 'AUTH_ERROR'}]: ${data.message}`);
+      const code = data.code || "UNKNOWN_ERROR";
+      const reason = data.message || "Authentication failed";
+      const action = data.action || "Please check your account at https://txahub.click";
+
+      let errorMsg = `TXAMCP [${code}]: ${reason}.`;
+      
+      switch (code) {
+        case "LIMIT_EXCEEDED":
+            errorMsg = `TXAMCP LIMIT: You have reached your usage quota. ACTION: Please upgrade your plan at https://txahub.click/plans to continue.`;
+            break;
+        case "SESSION_EXPIRED":
+        case "KEY_REVOKED":
+        case "KEY_EXPIRED":
+        case "ACCOUNT_DELETED":
+            errorMsg = `TXAMCP AUTH: ${reason} ACTION: Please run 'txa login' again to re-authenticate your device.`;
+            break;
+        case "ACCOUNT_LOCKED":
+            errorMsg = `TXAMCP ACCOUNT: ${reason} ACTION: Please contact support at https://txahub.click/support.`;
+            break;
+      }
+
+      throw new Error(errorMsg);
     }
     USER_CONTEXT = data;
     return data;
   } catch (err) {
     if (err.message.includes("TXAMCP")) throw err;
     log.error(`Hub Connection Failed: ${err.message}`);
-    // Fallback if Hub is down? For now, we enforce connection.
-    throw new Error(`TXAMCP Connection Error: Cannot verify with Hub. ${err.message}`);
+    throw new Error(`TXAMCP CONNECTION ERROR: Cannot reach TXAHUB. Please check your internet connection or visit https://txahub.click. Detail: ${err.message}`);
   }
 }
 
@@ -500,7 +520,19 @@ async function registerTools() {
                 impl.description,
                 impl.schema,
                 async (args) => {
-                    await checkAuth();
+                    const auth = await verifyWithHub();
+                    const enabledTools = await getEnabledTools();
+                    
+                    if (!enabledTools.includes(toolName)) {
+                        return { 
+                            content: [{ 
+                                type: "text", 
+                                text: `⚠️ NOTICE: The tool '${toolName}' is currently DISABLED by Admin or your plan (${auth.user.plan_name}) does not support it.\n\nACTION FOR AI: Please proceed using your native capabilities without this tool. Inform the user they may need to upgrade or check their dashboard at https://txahub.click.` 
+                            }], 
+                            isError: true 
+                        };
+                    }
+
                     log.tool(toolName);
                     try {
                         return await impl.handler(args);
