@@ -7,7 +7,6 @@ import { fileURLToPath } from "url";
 import chalk from "chalk";
 import boxen from "boxen";
 import { exec } from "child_process";
-import fetch from "node-fetch";
 import http from "http";
 import https from "https";
 import { URL } from "url";
@@ -494,7 +493,7 @@ else {
      ██║    ██╔██╗ ██╔══██║
      ██║   ██╔╝ ██╗██║  ██║
      ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝
-    `) + chalk.bold.white("MCP CLI v3.0.1");
+    `) + chalk.bold.white("MCP CLI v3.0.2");
 
     console.log(boxen(banner, { padding: 0, borderStyle: 'none', textAlignment: 'center' }));
     console.log(chalk.gray.italic("    Advanced AI Context Management Hub\n"));
