@@ -2,7 +2,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import fs from "fs/promises";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, createReadStream } from "fs";
+import crypto from "crypto";
 import path from "path";
 import os from "os";
 import chalk from "chalk";
@@ -56,22 +57,42 @@ async function verifyWithHub() {
     if (!data.success) {
       const code = data.code || "UNKNOWN_ERROR";
       const reason = data.message || "Authentication failed";
-      const action = data.action || "Please check your account at https://txahub.click";
 
       let errorMsg = `TXAMCP [${code}]: ${reason}.`;
       
       switch (code) {
         case "LIMIT_EXCEEDED":
-            errorMsg = `TXAMCP LIMIT: You have reached your usage quota. ACTION: Please upgrade your plan at https://txahub.click/plans to continue.`;
+            errorMsg = `🚫 TXAMCP LIMIT EXCEEDED\n` +
+                `Bạn đã hết quota sử dụng trong tháng này.\n\n` +
+                `🔗 Nâng cấp gói: ${HUB_URL}/plans\n` +
+                `📊 Xem usage: ${HUB_URL}/dashboard`;
             break;
         case "SESSION_EXPIRED":
         case "KEY_REVOKED":
         case "KEY_EXPIRED":
+            errorMsg = `🔑 TXAMCP AUTH: ${reason}\n\n` +
+                `API Key đã bị thu hồi hoặc hết hạn. Cần ủy quyền lại thiết bị.\n\n` +
+                `👉 CÁCH 1: Chạy lệnh trong terminal:\n` +
+                `   txa login\n\n` +
+                `👉 CÁCH 2: Ủy quyền qua web:\n` +
+                `   🔗 ${HUB_URL}/dashboard/keys → Tạo key mới → txa login\n\n` +
+                `👉 CÁCH 3: Quản lý thiết bị:\n` +
+                `   🔗 ${HUB_URL}/dashboard/devices`;
+            break;
         case "ACCOUNT_DELETED":
-            errorMsg = `TXAMCP AUTH: ${reason} ACTION: Please run 'txa login' again to re-authenticate your device.`;
+            errorMsg = `❌ TXAMCP: Tài khoản đã bị xóa.\n\n` +
+                `🔗 Đăng ký tài khoản mới: ${HUB_URL}/register\n` +
+                `📧 Liên hệ hỗ trợ: ${HUB_URL}/support`;
             break;
         case "ACCOUNT_LOCKED":
-            errorMsg = `TXAMCP ACCOUNT: ${reason} ACTION: Please contact support at https://txahub.click/support.`;
+            errorMsg = `🔒 TXAMCP ACCOUNT LOCKED: ${reason}\n\n` +
+                `Tài khoản đã bị khóa bởi Admin.\n` +
+                `📧 Liên hệ hỗ trợ: ${HUB_URL}/support`;
+            break;
+        default:
+            errorMsg = `⚠️ TXAMCP [${code}]: ${reason}\n\n` +
+                `🔗 Kiểm tra tại: ${HUB_URL}/dashboard\n` +
+                `📧 Hỗ trợ: ${HUB_URL}/support`;
             break;
       }
 
@@ -409,12 +430,106 @@ const TOOL_IMPLEMENTATIONS = {
     "get_file_info": {
         description: "Lấy thông tin chi tiết về một tệp tin (Kích thước, Ngày sửa đổi, Quyền).",
         schema: {
-            filePath: z.string().describe("Đường dẫn file")
+            filePath: z.string().describe("Đường dẫn file"),
+            hashAlgorithm: z.string().optional().describe("Thuật toán hash (sha256, md5, sha1). Để trống = trả về tất cả.")
         },
-        handler: async ({ filePath }) => {
+        handler: async ({ filePath, hashAlgorithm }) => {
             const abs = getAbsolutePath(filePath);
             const stats = await fs.stat(abs);
-            return { content: [{ type: "text", text: JSON.stringify(stats, null, 2) }] };
+            const ext = path.extname(abs).toLowerCase();
+            const fileName = path.basename(abs);
+
+            // --- Human-readable size ---
+            function formatSize(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                const units = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(1024));
+                return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
+            }
+
+            // --- MIME Type guessing ---
+            const mimeMap = {
+                '.js': 'application/javascript', '.mjs': 'application/javascript',
+                '.json': 'application/json', '.html': 'text/html', '.css': 'text/css',
+                '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+                '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp',
+                '.pdf': 'application/pdf', '.zip': 'application/zip',
+                '.apk': 'application/vnd.android.package-archive',
+                '.aab': 'application/x-authorware-bin',
+                '.dart': 'text/x-dart', '.py': 'text/x-python', '.php': 'text/x-php',
+                '.ts': 'text/typescript', '.tsx': 'text/tsx', '.jsx': 'text/jsx',
+                '.xml': 'application/xml', '.yaml': 'text/yaml', '.yml': 'text/yaml',
+                '.md': 'text/markdown', '.txt': 'text/plain', '.log': 'text/plain',
+                '.exe': 'application/x-msdownload', '.msi': 'application/x-msi',
+                '.sql': 'application/sql', '.sh': 'application/x-sh',
+                '.gradle': 'text/x-gradle', '.kt': 'text/x-kotlin', '.kts': 'text/x-kotlin',
+            };
+            const mimeType = mimeMap[ext] || 'application/octet-stream';
+
+            // --- File Hash ---
+            async function computeHash(algorithm) {
+                return new Promise((resolve, reject) => {
+                    const hash = crypto.createHash(algorithm);
+                    const stream = createReadStream(abs);
+                    stream.on('data', chunk => hash.update(chunk));
+                    stream.on('end', () => resolve(hash.digest('hex')));
+                    stream.on('error', reject);
+                });
+            }
+
+            let hashes = {};
+            try {
+                if (hashAlgorithm) {
+                    const algo = hashAlgorithm.toLowerCase();
+                    hashes[algo] = await computeHash(algo);
+                } else {
+                    // Trả về tất cả hash phổ biến
+                    const [sha256, md5, sha1] = await Promise.all([
+                        computeHash('sha256'),
+                        computeHash('md5'),
+                        computeHash('sha1')
+                    ]);
+                    hashes = { sha256, md5, sha1 };
+                }
+            } catch (err) {
+                hashes = { error: `Hash computation failed: ${err.message}` };
+            }
+
+            // --- Permission string ---
+            const mode = stats.mode;
+            const perms = [
+                (mode & 0o400) ? 'r' : '-', (mode & 0o200) ? 'w' : '-', (mode & 0o100) ? 'x' : '-',
+                (mode & 0o040) ? 'r' : '-', (mode & 0o020) ? 'w' : '-', (mode & 0o010) ? 'x' : '-',
+                (mode & 0o004) ? 'r' : '-', (mode & 0o002) ? 'w' : '-', (mode & 0o001) ? 'x' : '-'
+            ].join('');
+
+            const info = {
+                name: fileName,
+                path: abs,
+                extension: ext || 'N/A',
+                mimeType: mimeType,
+                isFile: stats.isFile(),
+                isDirectory: stats.isDirectory(),
+                isSymbolicLink: stats.isSymbolicLink(),
+                size: {
+                    bytes: stats.size,
+                    readable: formatSize(stats.size),
+                    KB: (stats.size / 1024).toFixed(2),
+                    MB: (stats.size / (1024 * 1024)).toFixed(4),
+                    GB: (stats.size / (1024 * 1024 * 1024)).toFixed(6)
+                },
+                permissions: perms,
+                modeOctal: '0o' + (mode & 0o777).toString(8),
+                dates: {
+                    created: new Date(stats.birthtimeMs).toLocaleString('vi-VN'),
+                    modified: new Date(stats.mtimeMs).toLocaleString('vi-VN'),
+                    accessed: new Date(stats.atimeMs).toLocaleString('vi-VN'),
+                    changed: new Date(stats.ctimeMs).toLocaleString('vi-VN')
+                },
+                hashes: hashes
+            };
+
+            return { content: [{ type: "text", text: JSON.stringify(info, null, 2) }] };
         }
     },
     "list_processes": {
