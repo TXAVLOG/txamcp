@@ -493,7 +493,7 @@ else if (args[0] === "login") {
 }
 else if (args[0] === "get" && args[1] === "config") handleGetConfig().catch(err => log.error(err.message));
 else if (args[0] === "logout") logout().catch(err => log.error(err.message));
-else if (args[0] === "version" || args[0] === "-v" || args[0] === "--version") {
+else if (args[0] === "version" || args[0] === "-v" || args[0] === "--v" || args[0] === "--version") {
     console.log("\n" + boxen(
         chalk.bold.cyan(" TXAMCP CLI ENGINE ") + "\n\n" +
         chalk.white(`${chalk.bold('Version :')} ${chalk.bold.green(pkg.version)}\n`) +
