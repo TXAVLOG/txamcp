@@ -34,6 +34,7 @@ npm install -g txamcp
 - `txa login`: Start the automated browser login flow.
 - `txa setup`: Configure MCP for all supported IDEs.
 - `txa get config`: Display current session & usage stats.
+- `txa version`: Show current version info.
 - `txa logout`: Terminate local session.
 
 ## Support

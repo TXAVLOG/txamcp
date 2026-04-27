@@ -493,6 +493,15 @@ else if (args[0] === "login") {
 }
 else if (args[0] === "get" && args[1] === "config") handleGetConfig().catch(err => log.error(err.message));
 else if (args[0] === "logout") logout().catch(err => log.error(err.message));
+else if (args[0] === "version" || args[0] === "-v" || args[0] === "--version") {
+    console.log("\n" + boxen(
+        chalk.bold.cyan(" TXAMCP CLI ENGINE ") + "\n\n" +
+        chalk.white(`${chalk.bold('Version :')} ${chalk.bold.green(pkg.version)}\n`) +
+        chalk.white(`${chalk.bold('License :')} ${chalk.yellow('MIT')}\n`) +
+        chalk.white(`${chalk.bold('Channel :')} ${chalk.blue('stable')}`),
+        { padding: 1, borderStyle: 'double', borderColor: 'cyan', title: ' System Info ', titleAlignment: 'center' }
+    ));
+}
 else {
     const banner = chalk.bold.cyan(`
   ████████╗██╗  ██╗ █████╗ 
@@ -510,6 +519,7 @@ else {
     console.log(`    ${chalk.cyan("txa login")}        ${chalk.gray("Start automated browser login")}`);
     console.log(`    ${chalk.cyan("txa setup")}        ${chalk.gray("Configure MCP for all supported IDEs")}`);
     console.log(`    ${chalk.cyan("txa get config")}   ${chalk.gray("Display current session & usage stats")}`);
+    console.log(`    ${chalk.cyan("txa version")}      ${chalk.gray("Show current version info")}`);
     console.log(`    ${chalk.cyan("txa logout")}       ${chalk.gray("Terminate local session\n")}`);
     
     console.log(chalk.bold("  EXAMPLES:"));
