@@ -573,7 +573,7 @@ server.prompt("fix_minimal", {
 
 let ENABLED_TOOLS_CACHE = null;
 let LAST_SYNC_TIME = 0;
-const SYNC_INTERVAL = 60000; // 1 minute cache
+const SYNC_INTERVAL = 10000; // 10 giây cache - check gần real-time
 
 async function getEnabledTools() {
     const now = Date.now();
@@ -582,7 +582,9 @@ async function getEnabledTools() {
     }
 
     try {
-        const response = await fetch("https://txahub.click/api/tools?api_key=" + CONFIG_API_KEY);
+        const response = await fetch(`${HUB_URL}/api/tools?api_key=${CONFIG_API_KEY}`, {
+            signal: AbortSignal.timeout(3000)
+        });
         const data = await response.json();
         if (data.success && data.tools) {
             ENABLED_TOOLS_CACHE = data.tools.map(t => t.name);
@@ -596,28 +598,32 @@ async function getEnabledTools() {
 }
 
 async function registerTools() {
-    let enabledTools = Object.keys(TOOL_IMPLEMENTATIONS); // Default to all core tools
+    const allToolNames = Object.keys(TOOL_IMPLEMENTATIONS);
     let registeredCount = 0;
 
+    // Lần đầu sync để biết trạng thái ban đầu (nhưng KHÔNG dùng để lọc)
     try {
-        log.info("Synchronizing tools with TXAHUB...");
+        log.info("Synchronizing tools status with TXAHUB...");
         const response = await fetch(`${HUB_URL}/api/tools?api_key=${CONFIG_API_KEY}`, {
             signal: AbortSignal.timeout(5000)
         });
         const data = await response.json();
         
         if (data.success && data.tools) {
-            enabledTools = data.tools.map(t => t.name);
-            log.success(`Fetched ${enabledTools.length} enabled tools from Hub.`);
+            ENABLED_TOOLS_CACHE = data.tools.map(t => t.name);
+            LAST_SYNC_TIME = Date.now();
+            const disabledCount = allToolNames.length - ENABLED_TOOLS_CACHE.filter(t => allToolNames.includes(t)).length;
+            log.success(`Synced: ${ENABLED_TOOLS_CACHE.length} enabled, ${disabledCount} disabled by Admin.`);
         } else {
-            log.warn("Hub returned no specific tools. Using core local tools.");
+            log.warn("Hub returned no tools. All local tools will be registered.");
         }
     } catch (err) {
-        log.error(`Hub sync failed (${err.message}). Using local fallback.`);
+        log.error(`Hub sync failed (${err.message}). All tools registered in offline mode.`);
     }
 
-    // Always register based on the enabled list (or all core tools if sync failed)
-    for (const toolName of enabledTools) {
+    // LUÔN đăng ký TẤT CẢ tools - IDE sẽ luôn thấy đầy đủ danh sách
+    // Việc kiểm tra enabled/disabled xảy ra REAL-TIME khi tool được gọi
+    for (const toolName of allToolNames) {
         const impl = TOOL_IMPLEMENTATIONS[toolName];
         if (impl) {
             server.tool(
@@ -625,14 +631,18 @@ async function registerTools() {
                 impl.description,
                 impl.schema,
                 async (args) => {
+                    // Xác thực tài khoản
                     const auth = await verifyWithHub();
-                    const enabledTools = await getEnabledTools();
                     
-                    if (!enabledTools.includes(toolName)) {
+                    // Check real-time xem tool có bị Admin tắt không
+                    const currentEnabled = await getEnabledTools();
+                    
+                    if (currentEnabled.length > 0 && !currentEnabled.includes(toolName)) {
+                        log.warn(`BLOCKED: Tool '${toolName}' is DISABLED by Admin.`);
                         return { 
                             content: [{ 
                                 type: "text", 
-                                text: `⚠️ NOTICE: The tool '${toolName}' is currently DISABLED by Admin or your plan (${auth.user.plan_name}) does not support it.\n\nACTION FOR AI: Please proceed using your native capabilities without this tool. Inform the user they may need to upgrade or check their dashboard at https://txahub.click.` 
+                                text: `🚫 TOOL DISABLED: Công cụ '${toolName}' đã bị VÔ HIỆU HÓA bởi Admin trên TXAHUB.\n\nPlan hiện tại: ${auth.user.plan_name}\n\nHÀNH ĐỘNG CHO AI: Hãy sử dụng khả năng tích hợp sẵn của IDE thay vì tool này. Thông báo cho người dùng rằng tool đã bị tắt bởi Admin tại https://txahub.click.` 
                             }], 
                             isError: true 
                         };
@@ -650,6 +660,8 @@ async function registerTools() {
         }
     }
     
+    log.success(`Registered ALL ${registeredCount} tools (enabled status checked per-call).`);
+
     if (registeredCount === 0) {
         server.tool(
             "txamcp_notice",
