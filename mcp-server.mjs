@@ -142,6 +142,20 @@ function getAbsolutePath(receivedPath) {
   return absolute;
 }
 
+// --- GIT ROOT DISCOVERY ---
+async function getGitRoot(startDir) {
+  let current = startDir;
+  for (let i = 0; i < MAX_SEARCH_STEPS; i++) {
+    try {
+      if (existsSync(path.join(current, ".git"))) return current;
+    } catch (e) {}
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return null;
+}
+
 // --- SERVER SETUP ---
 const server = new McpServer({
     name: "Txa_MCP",
@@ -186,14 +200,14 @@ const TOOL_IMPLEMENTATIONS = {
         description: "Lấy thông tin Git của thư mục hiện tại (Remote, Branch, Status).",
         schema: {},
         handler: async () => {
-            const isGit = existsSync(path.join(PROJECT_ROOT, ".git"));
-            if (!isGit) return { content: [{ type: "text", text: `Thư mục ${PROJECT_ROOT} không phải Git repository.` }] };
+            const gitRoot = await getGitRoot(PROJECT_ROOT);
+            if (!gitRoot) return { content: [{ type: "text", text: `⚠️ CẢNH BÁO: Thư mục ${PROJECT_ROOT} và các thư mục cha không phải Git repository. Nếu bạn định thực hiện lệnh git, hãy chắc chắn rằng bạn đang ở đúng thư mục dự án.` }] };
             const [remote, branch, status] = await Promise.all([
-                execPromise("git remote get-url origin", { cwd: PROJECT_ROOT }).then(r => r.stdout.trim()).catch(() => "N/A"),
-                execPromise("git rev-parse --abbrev-ref HEAD", { cwd: PROJECT_ROOT }).then(r => r.stdout.trim()).catch(() => "Unknown"),
-                execPromise("git status --short", { cwd: PROJECT_ROOT }).then(r => r.stdout.trim()).catch(() => "")
+                execPromise("git remote get-url origin", { cwd: gitRoot }).then(r => r.stdout.trim()).catch(() => "N/A"),
+                execPromise("git rev-parse --abbrev-ref HEAD", { cwd: gitRoot }).then(r => r.stdout.trim()).catch(() => "Unknown"),
+                execPromise("git status --short", { cwd: gitRoot }).then(r => r.stdout.trim()).catch(() => "")
             ]);
-            return { content: [{ type: "text", text: `Repo: ${remote}\nBranch: ${branch}\nChanges:\n${status || "Clean"}` }] };
+            return { content: [{ type: "text", text: `Git Root: ${gitRoot}\nRepo: ${remote}\nBranch: ${branch}\nChanges:\n${status || "Clean"}` }] };
         }
     },
     "search_code": {
@@ -416,7 +430,9 @@ const TOOL_IMPLEMENTATIONS = {
         description: "Xem trạng thái chi tiết của Git (staged, unstaged changes).",
         schema: {},
         handler: async () => {
-            const { stdout } = await execPromise("git status", { cwd: PROJECT_ROOT }).catch(() => ({ stdout: "Not a git repo." }));
+            const gitRoot = await getGitRoot(PROJECT_ROOT);
+            if (!gitRoot) return { content: [{ type: "text", text: `LỖI: Không tìm thấy Git repository tại ${PROJECT_ROOT} hoặc cha của nó.` }], isError: true };
+            const { stdout } = await execPromise("git status", { cwd: gitRoot }).catch((err) => ({ stdout: `Git Error: ${err.message}` }));
             return { content: [{ type: "text", text: stdout }] };
         }
     },
@@ -426,7 +442,9 @@ const TOOL_IMPLEMENTATIONS = {
             count: z.number().default(5).describe("Số lượng commit cần xem")
         },
         handler: async ({ count = 5 }) => {
-            const { stdout } = await execPromise(`git log -n ${count} --oneline`, { cwd: PROJECT_ROOT }).catch(() => ({ stdout: "Error fetching git log." }));
+            const gitRoot = await getGitRoot(PROJECT_ROOT);
+            if (!gitRoot) return { content: [{ type: "text", text: `LỖI: Không tìm thấy Git repository.` }], isError: true };
+            const { stdout } = await execPromise(`git log -n ${count} --oneline`, { cwd: gitRoot }).catch(() => ({ stdout: "Error fetching git log." }));
             return { content: [{ type: "text", text: stdout }] };
         }
     },
@@ -434,7 +452,9 @@ const TOOL_IMPLEMENTATIONS = {
         description: "Xem các thay đổi hiện tại chưa commit.",
         schema: {},
         handler: async () => {
-            const { stdout } = await execPromise("git diff", { cwd: PROJECT_ROOT }).catch(() => ({ stdout: "No changes." }));
+            const gitRoot = await getGitRoot(PROJECT_ROOT);
+            if (!gitRoot) return { content: [{ type: "text", text: `LỖI: Không tìm thấy Git repository.` }], isError: true };
+            const { stdout } = await execPromise("git diff", { cwd: gitRoot }).catch(() => ({ stdout: "No changes or error." }));
             return { content: [{ type: "text", text: stdout || "No differences." }] };
         }
     },
