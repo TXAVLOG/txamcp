@@ -449,6 +449,48 @@ const TOOL_IMPLEMENTATIONS = {
             await fs.mkdir(abs, { recursive: true });
             return { content: [{ type: "text", text: `Successfully created directory: ${dirPath}` }] };
         }
+    },
+    "edit_code": {
+        description: "CHỈNH SỬA NHANH: Thay thế một đoạn mã cụ thể bằng đoạn mã mới. AI nên dùng tool này để sửa các hàm hoặc khối code mà không cần ghi đè toàn bộ file.",
+        schema: {
+            filePath: z.string().describe("Đường dẫn file"),
+            oldCode: z.string().describe("Đoạn mã cũ cần thay thế (phải khớp chính xác từng ký tự)"),
+            newCode: z.string().describe("Đoạn mã mới sẽ thay thế")
+        },
+        handler: async ({ filePath, oldCode, newCode }) => {
+            const abs = getAbsolutePath(filePath);
+            const content = await fs.readFile(abs, "utf-8");
+            if (!content.includes(oldCode)) {
+                return { 
+                    content: [{ type: "text", text: `LỖI: Không tìm thấy đoạn mã cũ trong file. Hãy đảm bảo bạn đã copy chính xác từng khoảng trắng và xuống dòng.` }],
+                    isError: true 
+                };
+            }
+            const updated = content.replace(oldCode, newCode);
+            await fs.writeFile(abs, updated, "utf-8");
+            return { content: [{ type: "text", text: `✅ Đã cập nhật mã nguồn trong ${filePath} thành công.` }] };
+        }
+    },
+    "quick_search_replace": {
+        description: "TÌM & THAY THẾ: Tìm kiếm một chuỗi hoặc mẫu Regex và thay thế toàn bộ trong file.",
+        schema: {
+            filePath: z.string().describe("Đường dẫn file"),
+            searchPattern: z.string().describe("Chuỗi văn bản hoặc Regex cần tìm"),
+            replacement: z.string().describe("Nội dung thay thế"),
+            useRegex: z.boolean().default(false).describe("Bật nếu muốn sử dụng Regular Expression")
+        },
+        handler: async ({ filePath, searchPattern, replacement, useRegex }) => {
+            const abs = getAbsolutePath(filePath);
+            const content = await fs.readFile(abs, "utf-8");
+            let updated;
+            if (useRegex) {
+                updated = content.replace(new RegExp(searchPattern, 'g'), replacement);
+            } else {
+                updated = content.split(searchPattern).join(replacement);
+            }
+            await fs.writeFile(abs, updated, "utf-8");
+            return { content: [{ type: "text", text: `✅ Đã thay thế tất cả các vị trí khớp với '${searchPattern}' trong ${filePath}.` }] };
+        }
     }
 };
 
