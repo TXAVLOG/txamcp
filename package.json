@@ -30,13 +30,6 @@
   ],
   "author": "TXA Hub Team",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/TXAVLOG/txamcp"
-  },
-  "bugs": {
-    "url": "https://github.com/TXAVLOG/txamcp/issues"
-  },
   "homepage": "https://txahub.click",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.6.0",
