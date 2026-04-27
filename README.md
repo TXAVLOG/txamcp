@@ -15,9 +15,14 @@ npm install -g txamcp
 ```
 
 ## Quick Start
+0. **Account**: Create an account at [txahub.click](https://txahub.click) to get your API Key.
 1. **Login**: Authenticate your computer with TXA Hub.
    ```bash
+   # Automated browser login
    txa login
+
+   # Or manual API Key login
+   txa login --api-key YOUR_API_KEY
    ```
 2. **Setup**: Automatically configure your IDEs (Trae, Cursor, etc.).
    ```bash

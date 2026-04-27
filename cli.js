@@ -10,7 +10,15 @@ import { exec } from "child_process";
 import http from "http";
 import https from "https";
 import { URL } from "url";
+import { createRequire } from "module";
 import crypto from "crypto";
+import updateNotifier from "update-notifier";
+
+const require = createRequire(import.meta.url);
+const pkg = require("./package.json");
+
+// Check for updates
+updateNotifier({ pkg }).notify();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -493,7 +501,7 @@ else {
      ██║    ██╔██╗ ██╔══██║
      ██║   ██╔╝ ██╗██║  ██║
      ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝
-    `) + chalk.bold.white("MCP CLI v3.0.2");
+    `) + chalk.bold.white(`MCP CLI v${pkg.version}`);
 
     console.log(boxen(banner, { padding: 0, borderStyle: 'none', textAlignment: 'center' }));
     console.log(chalk.gray.italic("    Advanced AI Context Management Hub\n"));
