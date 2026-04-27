@@ -149,20 +149,99 @@ async function login(apiKey) {
             const token = url.searchParams.get("token");
             
             if (status === "success" && key) {
+                const html = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>Authorization Successful - TXAMCP</title>
+                    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+                    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+                    <script src="https://cdn.tailwindcss.com"></script>
+                    <style>
+                        body { font-family: 'Outfit', sans-serif; background-color: #020617; }
+                        .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+                        .animate-float { animation: float 6s ease-in-out infinite; }
+                        @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-20px); } }
+                    </style>
+                </head>
+                <body class="flex items-center justify-center min-h-screen overflow-hidden">
+                    <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-sky-500/10 blur-[120px] rounded-full"></div>
+                    
+                    <div class="glass p-12 rounded-[2.5rem] shadow-2xl max-w-lg w-full text-center relative z-10 border-sky-500/20">
+                        <div class="w-24 h-24 bg-emerald-500/10 rounded-3xl flex items-center justify-center text-5xl text-emerald-400 mx-auto mb-8 animate-bounce shadow-lg shadow-emerald-500/20 border border-emerald-500/20">
+                            <i class="bi bi-check-circle-fill"></i>
+                        </div>
+                        
+                        <h1 class="text-4xl font-black text-white mb-4 tracking-tight">SUCCESS!</h1>
+                        <p class="text-slate-400 text-lg mb-8 leading-relaxed">
+                            You have successfully authorized <span class="text-sky-400 font-bold">TXA CLI</span>.
+                            Your local development environment is now synchronized.
+                        </p>
+                        
+                        <div class="p-4 bg-slate-900/50 rounded-2xl border border-slate-800 text-slate-500 text-sm italic mb-8">
+                            <i class="bi bi-info-circle mr-2"></i> You can safely close this tab and return to your terminal.
+                        </div>
+
+                        <div class="flex items-center justify-center gap-3 text-slate-500">
+                            <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                            <span class="text-xs uppercase tracking-widest font-bold">Connection Secured</span>
+                        </div>
+                    </div>
+                    
+                    <script>
+                        setTimeout(() => { 
+                            window.close(); 
+                            // Fallback for browsers that block window.close()
+                            document.querySelector('h1').innerText = "DONE!";
+                            document.querySelector('p').innerText = "You can now return to your terminal.";
+                        }, 1500);
+                    </script>
+                </body>
+                </html>`;
+
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-                res.end('<div style="font-family: sans-serif; text-align: center; padding: 50px; background: #0f172a; color: white; min-height: 100vh;">' +
-                        '<h1 style="color: #10b981; font-size: 40px; margin-bottom: 10px;">SUCCESS!</h1>' +
-                        '<p style="color: #94a3b8; font-size: 18px;">You have successfully authorized TXA CLI.</p>' +
-                        '<p style="color: #64748b;">You can safely close this tab and return to your terminal.</p></div>' +
-                        '<script>setTimeout(() => { window.close(); }, 500);</script>');
+                res.end(html);
                 console.log("");
                 log.success(chalk.bold("Authorization received from browser!"));
                 await cleanup("success", key, token);
             } else {
+                const html = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>Authorization Cancelled - TXAMCP</title>
+                    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+                    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+                    <script src="https://cdn.tailwindcss.com"></script>
+                    <style>
+                        body { font-family: 'Outfit', sans-serif; background-color: #020617; }
+                        .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+                    </style>
+                </head>
+                <body class="flex items-center justify-center min-h-screen overflow-hidden">
+                    <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-red-500/5 blur-[120px] rounded-full"></div>
+                    
+                    <div class="glass p-12 rounded-[2.5rem] shadow-2xl max-w-lg w-full text-center relative z-10 border-red-500/20">
+                        <div class="w-24 h-24 bg-red-500/10 rounded-3xl flex items-center justify-center text-5xl text-red-400 mx-auto mb-8 border border-red-500/20">
+                            <i class="bi bi-x-circle-fill"></i>
+                        </div>
+                        
+                        <h1 class="text-4xl font-black text-white mb-4 tracking-tight uppercase">Cancelled</h1>
+                        <p class="text-slate-400 text-lg mb-8 leading-relaxed">
+                            The authorization request was denied or timed out.
+                        </p>
+                        
+                        <div class="p-4 bg-slate-900/50 rounded-2xl border border-slate-800 text-slate-500 text-sm italic">
+                            Return to your terminal to try again.
+                        </div>
+                    </div>
+                </body>
+                </html>`;
+
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-                res.end('<div style="font-family: sans-serif; text-align: center; padding: 50px; background: #0f172a; color: white; min-height: 100vh;">' +
-                        '<h1 style="color: #ef4444; font-size: 40px; margin-bottom: 10px;">CANCELLED</h1>' +
-                        '<p style="color: #94a3b8; font-size: 18px;">Authorization request was denied.</p></div>');
+                res.end(html);
                 log.warn("Authorization request was cancelled.");
                 await cleanup("cancelled");
             }
@@ -415,7 +494,7 @@ else {
      ██║    ██╔██╗ ██╔══██║
      ██║   ██╔╝ ██╗██║  ██║
      ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝
-    `) + chalk.bold.white("MCP CLI v3.0");
+    `) + chalk.bold.white("MCP CLI v3.0.1");
 
     console.log(boxen(banner, { padding: 0, borderStyle: 'none', textAlignment: 'center' }));
     console.log(chalk.gray.italic("    Advanced AI Context Management Hub\n"));
