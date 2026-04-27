@@ -126,6 +126,7 @@ async function login(apiKey) {
                 log.success(chalk.bold("Authorization received from browser!"));
                 server.close();
                 await completeLogin(key, token);
+                process.exit(0);
             } else {
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
                 res.end('<div style="font-family: sans-serif; text-align: center; padding: 50px; background: #0f172a; color: white; min-height: 100vh;">' +
@@ -177,6 +178,7 @@ async function login(apiKey) {
                   process.off('SIGINT', handleAbort);
                   server.close();
                   await completeLogin(pollData.api_key, pollData.token);
+                  process.exit(0);
               } else if (pollData.status === 'cancelled') {
                   clearInterval(poll);
                   process.off('SIGINT', handleAbort);
