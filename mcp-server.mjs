@@ -587,7 +587,27 @@ async function registerTools() {
         }
     }
     
-    log.success(`Successfully initialized ${registeredCount} tools.`);
+    if (registeredCount === 0) {
+        server.tool(
+            "txamcp_notice",
+            "⚠️ THÔNG BÁO: Hiện tại không có tool nào được kích hoạt cho tài khoản này.",
+            {},
+            async () => {
+                const auth = await verifyWithHub().catch(() => null);
+                const plan = auth ? auth.user.plan_name : "N/A";
+                return { 
+                    content: [{ 
+                        type: "text", 
+                        text: `⚠️ HỆ THỐNG: Mọi công cụ đã bị vô hiệu hóa bởi Admin hoặc gói cước của bạn (${plan}) không hỗ trợ.\n\nHÀNH ĐỘNG: Vui lòng nâng cấp gói tại https://txahub.click/plans hoặc liên hệ Admin để được hỗ trợ.` 
+                    }],
+                    isError: true 
+                };
+            }
+        );
+        log.warn("No tools enabled for this user. Registered notice tool.");
+    } else {
+        log.success(`Successfully initialized ${registeredCount} tools.`);
+    }
 }
 
 // --- HTTP API (Only when explicitly enabled, not needed for stdio/IDE mode) ---
