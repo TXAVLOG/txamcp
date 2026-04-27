@@ -105,6 +105,7 @@ const log = {
     process.stderr.write(`${log.timestamp()} ℹ ${plan}${msg}\n`);
   },
   error: (msg) => process.stderr.write(`${log.timestamp()} ✖ ${msg}\n`),
+  warn: (msg) => process.stderr.write(`${log.timestamp()} ⚠ ${msg}\n`),
   success: (msg) => process.stderr.write(`${log.timestamp()} ✔ ${msg}\n`),
   tool: (name) => {
     const plan = USER_CONTEXT?.user?.plan_name ? `[${USER_CONTEXT.user.plan_name}] ` : "";
