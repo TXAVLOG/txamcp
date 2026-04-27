@@ -112,6 +112,18 @@ async function getPublicIP() {
 }
 
 async function login(apiKey) {
+  const configPath = path.resolve(os.homedir(), ".txamcp", "config.json");
+  if (await fileExists(configPath)) {
+    console.log("");
+    log.warn(`You are already logged in.`);
+    try {
+        const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+        console.log(chalk.gray(`Currently active session: ${chalk.bold.white(config.user?.username || "Unknown")}`));
+    } catch (e) {}
+    console.log(chalk.gray(`To switch accounts, please run '${chalk.cyan("txa logout")}' first.\n`));
+    return;
+  }
+
   if (!apiKey) {
     console.log("");
     log.step(chalk.bold("Initializing automated login flow..."));
@@ -503,6 +515,7 @@ else if (args[0] === "version" || args[0] === "-v" || args[0] === "--v" || args[
     ));
 }
 else {
+    const unknownCmd = args[0];
     const banner = chalk.bold.cyan(`
   ████████╗██╗  ██╗ █████╗ 
   ╚══██╔══╝╚██╗██╔╝██╔══██╗
@@ -511,6 +524,11 @@ else {
      ██║   ██╔╝ ██╗██║  ██║
      ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝
     `) + chalk.bold.white(`MCP CLI v${pkg.version}`);
+
+    if (unknownCmd && !["help", "--help", "-h"].includes(unknownCmd)) {
+        console.log("");
+        log.error(`Unknown command: ${chalk.bold.red(unknownCmd)}`);
+    }
 
     console.log(boxen(banner, { padding: 0, borderStyle: 'none', textAlignment: 'center' }));
     console.log(chalk.gray.italic("    Advanced AI Context Management Hub\n"));
