@@ -11,6 +11,7 @@ import fetch from "node-fetch";
 import http from "http";
 import https from "https";
 import { URL } from "url";
+import crypto from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,6 +65,24 @@ function validateApiKeyFormat(apiKey) {
   return { valid: true };
 }
 
+/**
+ * Decrypt data using AES-128-ECB with key 'txahub'
+ */
+function decrypt(data, key = 'txahub') {
+    if (!data) return data;
+    try {
+        const keyBuf = Buffer.alloc(16, 0);
+        keyBuf.write(key);
+        const decipher = crypto.createDecipheriv('aes-128-ecb', keyBuf, null);
+        let decrypted = decipher.update(data, 'base64', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+    } catch (e) {
+        // If decryption fails, it might be plaintext (fallback)
+        return data;
+    }
+}
+
 async function getPublicIP() {
   return new Promise((resolve) => {
     https.get('https://api.ipify.org', (res) => {
@@ -108,7 +127,20 @@ async function login(apiKey) {
       }
 
       const { request_id, auth_url } = data;
-      const port = 2311;
+      const port = 3636;
+      let poll;
+
+      const cleanup = async (status, key = null, token = null) => {
+          if (poll) clearInterval(poll);
+          server.close();
+          if (status === "success" && key) {
+              const decryptedKey = decrypt(key);
+              const decryptedToken = decrypt(token);
+              await completeLogin(decryptedKey, decryptedToken);
+          }
+          process.exit(0);
+      };
+
       const server = http.createServer(async (req, res) => {
         const url = new URL(req.url, `http://localhost:${port}`);
         if (url.pathname === "/callback") {
@@ -121,20 +153,18 @@ async function login(apiKey) {
                 res.end('<div style="font-family: sans-serif; text-align: center; padding: 50px; background: #0f172a; color: white; min-height: 100vh;">' +
                         '<h1 style="color: #10b981; font-size: 40px; margin-bottom: 10px;">SUCCESS!</h1>' +
                         '<p style="color: #94a3b8; font-size: 18px;">You have successfully authorized TXA CLI.</p>' +
-                        '<p style="color: #64748b;">You can safely close this tab and return to your terminal.</p></div>');
+                        '<p style="color: #64748b;">You can safely close this tab and return to your terminal.</p></div>' +
+                        '<script>setTimeout(() => { window.close(); }, 500);</script>');
                 console.log("");
                 log.success(chalk.bold("Authorization received from browser!"));
-                server.close();
-                await completeLogin(key, token);
-                process.exit(0);
+                await cleanup("success", key, token);
             } else {
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
                 res.end('<div style="font-family: sans-serif; text-align: center; padding: 50px; background: #0f172a; color: white; min-height: 100vh;">' +
                         '<h1 style="color: #ef4444; font-size: 40px; margin-bottom: 10px;">CANCELLED</h1>' +
                         '<p style="color: #94a3b8; font-size: 18px;">Authorization request was denied.</p></div>');
                 log.warn("Authorization request was cancelled.");
-                server.close();
-                process.exit(0);
+                await cleanup("cancelled");
             }
         }
       });
@@ -153,7 +183,6 @@ async function login(apiKey) {
       ));
 
       // Handle Ctrl+C to notify server
-      const abortController = new AbortController();
       const handleAbort = async () => {
           console.log('\n\n  ' + chalk.yellow('!') + ' Aborting login flow...');
           try {
@@ -169,22 +198,16 @@ async function login(apiKey) {
       process.on('SIGINT', handleAbort);
 
       // Polling fallback
-      const poll = setInterval(async () => {
+      poll = setInterval(async () => {
           try {
               const pollRes = await fetch(`https://txahub.click/api/auth/cli/poll?request_id=${request_id}`);
               const pollData = await pollRes.json();
               if (pollData.status === 'authorized') {
-                  clearInterval(poll);
-                  process.off('SIGINT', handleAbort);
-                  server.close();
-                  await completeLogin(pollData.api_key, pollData.token);
-                  process.exit(0);
+                  log.success(chalk.bold("Authorization confirmed via polling!"));
+                  await cleanup("success", pollData.api_key, pollData.token);
               } else if (pollData.status === 'cancelled') {
-                  clearInterval(poll);
-                  process.off('SIGINT', handleAbort);
-                  server.close();
                   log.warn("Login was cancelled on the website.");
-                  process.exit(0);
+                  await cleanup("cancelled");
               }
           } catch (e) {}
       }, 3000);
