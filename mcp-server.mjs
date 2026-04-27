@@ -322,8 +322,50 @@ const TOOL_IMPLEMENTATIONS = {
             command: z.string().describe("Lệnh POWERSHELL cần chạy")
         },
         handler: async ({ command }) => {
-            const { stdout, stderr } = await execPromise(command, { cwd: PROJECT_ROOT });
+            const options = { cwd: PROJECT_ROOT };
+            if (os.platform() === 'win32') {
+                options.shell = 'powershell.exe';
+            }
+            const { stdout, stderr } = await execPromise(command, options);
             return { content: [{ type: "text", text: stdout || stderr || "Command executed successfully." }] };
+        }
+    },
+    "kill_process": {
+        description: "Dừng các tiến trình build app phổ biến (gradle, flutter, node, adb, etc.) hoặc một tiến trình cụ thể.",
+        schema: {
+            processName: z.string().optional().describe("Tên tiến trình (e.g. java, flutter, node, adb). Nếu để trống sẽ quét diện rộng các tiến trình build.")
+        },
+        handler: async ({ processName }) => {
+            let cmd;
+            if (os.platform() === 'win32') {
+                if (processName) {
+                    const name = processName.toLowerCase().replace('.exe', '');
+                    cmd = `powershell -Command "Get-Process -Name '${name}' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; echo 'Killed ${name}'"`;
+                } else {
+                    // Comprehensive list for Flutter/Android/Web build processes
+                    // Includes adb, aapt, ninja, etc.
+                    const targets = [
+                        'flutter', 'dart', 'adb', 'java', 'node', 
+                        'msbuild', 'ninja', 'cmake', 'aapt', 'aapt2', 'gradlew'
+                    ];
+                    const psList = targets.map(t => `'${t}'`).join(',');
+                    cmd = `powershell -Command "$targets = @(${psList}); foreach ($t in $targets) { Get-Process -Name $t -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }; echo 'Build and related processes (flutter, adb, java, etc.) have been terminated.'"`;
+                }
+            } else {
+                if (processName) {
+                    cmd = `pkill -9 -f ${processName}`;
+                } else {
+                    cmd = `pkill -9 -f "gradle|flutter|dart|node|adb|cmake|ninja|aapt"`;
+                }
+            }
+            
+            try {
+                const { stdout, stderr } = await execPromise(cmd);
+                return { content: [{ type: "text", text: stdout || stderr || "Processes terminated successfully." }] };
+            } catch (err) {
+                // If some processes weren't found, it's fine
+                return { content: [{ type: "text", text: `Cleanup result: ${err.message}` }] };
+            }
         }
     },
     "get_dependencies": {
