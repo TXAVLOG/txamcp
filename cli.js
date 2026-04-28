@@ -46,29 +46,29 @@ const API_KEY_REGEX = /^txamcp-[a-f0-9]{56}$/;
 
 function validateApiKeyFormat(apiKey) {
   if (!apiKey) {
-    return { 
-      valid: false, 
+    return {
+      valid: false,
       message: "API Key cannot be empty.",
       example: "txamcp-710645672906e5762696614486536554556485542261626244226462"
     };
   }
-  
+
   if (!apiKey.startsWith(API_KEY_PREFIX)) {
-    return { 
-      valid: false, 
+    return {
+      valid: false,
       message: `API Key must start with '${API_KEY_PREFIX}'.`,
       example: "txamcp-710645672906e5762696614486536554556485542261626244226462"
     };
   }
-  
+
   if (!API_KEY_REGEX.test(apiKey)) {
-    return { 
-      valid: false, 
+    return {
+      valid: false,
       message: "Invalid API Key format (must be 56 hex characters after prefix).",
       example: "txamcp-710645672906e5762696614486536554556485542261626244226462"
     };
   }
-  
+
   return { valid: true };
 }
 
@@ -76,18 +76,18 @@ function validateApiKeyFormat(apiKey) {
  * Decrypt data using AES-128-ECB with key 'txahub'
  */
 function decrypt(data, key = 'txahub') {
-    if (!data) return data;
-    try {
-        const keyBuf = Buffer.alloc(16, 0);
-        keyBuf.write(key);
-        const decipher = crypto.createDecipheriv('aes-128-ecb', keyBuf, null);
-        let decrypted = decipher.update(data, 'base64', 'utf8');
-        decrypted += decipher.final('utf8');
-        return decrypted;
-    } catch (e) {
-        // If decryption fails, it might be plaintext (fallback)
-        return data;
-    }
+  if (!data) return data;
+  try {
+    const keyBuf = Buffer.alloc(16, 0);
+    keyBuf.write(key);
+    const decipher = crypto.createDecipheriv('aes-128-ecb', keyBuf, null);
+    let decrypted = decipher.update(data, 'base64', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  } catch (e) {
+    // If decryption fails, it might be plaintext (fallback)
+    return data;
+  }
 }
 
 async function getPublicIP() {
@@ -117,9 +117,9 @@ async function login(apiKey) {
     console.log("");
     log.warn(`You are already logged in.`);
     try {
-        const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
-        console.log(chalk.gray(`Currently active session: ${chalk.bold.white(config.user?.username || "Unknown")}`));
-    } catch (e) {}
+      const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+      console.log(chalk.gray(`Currently active session: ${chalk.bold.white(config.user?.username || "Unknown")}`));
+    } catch (e) { }
     console.log(chalk.gray(`To switch accounts, please run '${chalk.cyan("txa logout")}' first.\n`));
     return;
   }
@@ -129,14 +129,14 @@ async function login(apiKey) {
     log.step(chalk.bold("Initializing automated login flow..."));
     const computerName = os.hostname();
     const ipAddress = await getPublicIP();
-    
+
     try {
       const res = await fetch("https://txahub.click/api/auth/cli/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-            computer_name: computerName,
-            ip_address: ipAddress
+        body: JSON.stringify({
+          computer_name: computerName,
+          ip_address: ipAddress
         })
       });
       const data = await res.json();
@@ -150,25 +150,25 @@ async function login(apiKey) {
       let poll;
 
       const cleanup = async (status, key = null, token = null) => {
-          if (poll) clearInterval(poll);
-          server.close();
-          if (status === "success" && key) {
-              const decryptedKey = decrypt(key);
-              const decryptedToken = decrypt(token);
-              await completeLogin(decryptedKey, decryptedToken);
-          }
-          process.exit(0);
+        if (poll) clearInterval(poll);
+        server.close();
+        if (status === "success" && key) {
+          const decryptedKey = decrypt(key);
+          const decryptedToken = decrypt(token);
+          await completeLogin(decryptedKey, decryptedToken);
+        }
+        process.exit(0);
       };
 
       const server = http.createServer(async (req, res) => {
         const url = new URL(req.url, `http://localhost:${port}`);
         if (url.pathname === "/callback") {
-            const status = url.searchParams.get("status");
-            const key = url.searchParams.get("api_key");
-            const token = url.searchParams.get("token");
-            
-            if (status === "success" && key) {
-                const html = `
+          const status = url.searchParams.get("status");
+          const key = url.searchParams.get("api_key");
+          const token = url.searchParams.get("token");
+
+          if (status === "success" && key) {
+            const html = `
                 <!DOCTYPE html>
                 <html>
                 <head>
@@ -219,13 +219,13 @@ async function login(apiKey) {
                 </body>
                 </html>`;
 
-                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-                res.end(html);
-                console.log("");
-                log.success(chalk.bold("Authorization received from browser!"));
-                await cleanup("success", key, token);
-            } else {
-                const html = `
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.end(html);
+            console.log("");
+            log.success(chalk.bold("Authorization received from browser!"));
+            await cleanup("success", key, token);
+          } else {
+            const html = `
                 <!DOCTYPE html>
                 <html>
                 <head>
@@ -259,55 +259,55 @@ async function login(apiKey) {
                 </body>
                 </html>`;
 
-                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-                res.end(html);
-                log.warn("Authorization request was cancelled.");
-                await cleanup("cancelled");
-            }
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.end(html);
+            log.warn("Authorization request was cancelled.");
+            await cleanup("cancelled");
+          }
         }
       });
 
       server.listen(port);
       const start = (process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open');
       exec(`${start} ${auth_url}`);
-      
+
       console.log("\n" + boxen(
-          chalk.white.bold("ACTION REQUIRED: Complete Login in Browser\n\n") +
-          chalk.gray("A browser window should have opened automatically.\n") +
-          chalk.gray("If not, please copy and paste this URL:\n\n") +
-          chalk.cyan.underline(auth_url) + "\n\n" +
-          chalk.magenta.italic("Waiting for secure connection..."),
-          { padding: 1, borderStyle: 'double', borderColor: 'magenta', title: ' OAuth 2.0 Auth ', titleAlignment: 'center' }
+        chalk.white.bold("ACTION REQUIRED: Complete Login in Browser\n\n") +
+        chalk.gray("A browser window should have opened automatically.\n") +
+        chalk.gray("If not, please copy and paste this URL:\n\n") +
+        chalk.cyan.underline(auth_url) + "\n\n" +
+        chalk.magenta.italic("Waiting for secure connection..."),
+        { padding: 1, borderStyle: 'double', borderColor: 'magenta', title: ' OAuth 2.0 Auth ', titleAlignment: 'center' }
       ));
 
       // Handle Ctrl+C to notify server
       const handleAbort = async () => {
-          console.log('\n\n  ' + chalk.yellow('!') + ' Aborting login flow...');
-          try {
-              await fetch("https://txahub.click/api/auth/cli/cancel", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ request_id: request_id }),
-                  signal: AbortSignal.timeout(2000) // Don't hang on exit
-              });
-          } catch (e) {}
-          process.exit(0);
+        console.log('\n\n  ' + chalk.yellow('!') + ' Aborting login flow...');
+        try {
+          await fetch("https://txahub.click/api/auth/cli/cancel", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ request_id: request_id }),
+            signal: AbortSignal.timeout(2000) // Don't hang on exit
+          });
+        } catch (e) { }
+        process.exit(0);
       };
       process.on('SIGINT', handleAbort);
 
       // Polling fallback
       poll = setInterval(async () => {
-          try {
-              const pollRes = await fetch(`https://txahub.click/api/auth/cli/poll?request_id=${request_id}`);
-              const pollData = await pollRes.json();
-              if (pollData.status === 'authorized') {
-                  log.success(chalk.bold("Authorization confirmed via polling!"));
-                  await cleanup("success", pollData.api_key, pollData.token);
-              } else if (pollData.status === 'cancelled') {
-                  log.warn("Login was cancelled on the website.");
-                  await cleanup("cancelled");
-              }
-          } catch (e) {}
+        try {
+          const pollRes = await fetch(`https://txahub.click/api/auth/cli/poll?request_id=${request_id}`);
+          const pollData = await pollRes.json();
+          if (pollData.status === 'authorized') {
+            log.success(chalk.bold("Authorization confirmed via polling!"));
+            await cleanup("success", pollData.api_key, pollData.token);
+          } else if (pollData.status === 'cancelled') {
+            log.warn("Login was cancelled on the website.");
+            await cleanup("cancelled");
+          }
+        } catch (e) { }
       }, 3000);
       return;
     } catch (err) {
@@ -349,10 +349,10 @@ async function completeLogin(apiKey, token = null) {
 
     if (data.success) {
       await fs.mkdir(configDir, { recursive: true });
-      await fs.writeFile(configPath, JSON.stringify({ 
-          apiKey, cliToken: token, user: data.user, lastSync: new Date().toISOString() 
+      await fs.writeFile(configPath, JSON.stringify({
+        apiKey, cliToken: token, user: data.user, lastSync: new Date().toISOString()
       }, null, 2));
-      
+
       console.log("\n" + boxen(
         chalk.green.bold(` ACCESS GRANTED: ${data.user.username.toUpperCase()} `) + "\n\n" +
         chalk.white(`${chalk.bold('User :')} ${data.user.email || data.user.username}\n`) +
@@ -372,7 +372,7 @@ async function completeLogin(apiKey, token = null) {
 async function logout() {
   const configPath = path.resolve(os.homedir(), ".txamcp", "config.json");
   if (await fileExists(configPath)) {
-    await fs.unlink(configPath).catch(() => {});
+    await fs.unlink(configPath).catch(() => { });
     console.log("");
     log.success("Logged out successfully. Local session cleared.");
   } else {
@@ -400,7 +400,7 @@ async function setup() {
   try {
     const cfg = JSON.parse(await fs.readFile(configPath, "utf-8"));
     apiKey = cfg.apiKey;
-  } catch(e) {}
+  } catch (e) { }
 
   const ides = getAppPaths();
   const serverPath = path.resolve(__dirname, "mcp-server.mjs");
@@ -411,64 +411,64 @@ async function setup() {
       try {
         let settings = {};
         if (await fileExists(ide.configPath)) {
-            const content = await fs.readFile(ide.configPath, "utf-8");
-            try {
-                settings = JSON.parse(content);
-            } catch (parseError) {
-                log.warn(`Existing config for ${ide.name} is invalid JSON. Overwriting...`);
-            }
+          const content = await fs.readFile(ide.configPath, "utf-8");
+          try {
+            settings = JSON.parse(content);
+          } catch (parseError) {
+            log.warn(`Existing config for ${ide.name} is invalid JSON. Overwriting...`);
+          }
         }
-        
+
         if (!settings.mcpServers) settings.mcpServers = {};
-        delete settings.mcpServers["txamcp"]; // Gỡ bỏ tên cũ nếu tồn tại
-        settings.mcpServers["Txa_MCP"] = { 
-            "command": "node", 
-            "args": [serverPath], 
-            "env": { 
-                "API_KEY": apiKey,
-                "HUB_URL": "https://txahub.click"
-            } 
+        delete settings.mcpServers["txamcp"]; // Remove legacy name if exists
+        settings.mcpServers["Txa_MCP"] = {
+          "command": "node",
+          "args": [serverPath],
+          "env": {
+            "API_KEY": apiKey,
+            "HUB_URL": "https://txahub.click"
+          }
         };
-        
+
         await fs.mkdir(path.dirname(ide.configPath), { recursive: true });
         await fs.writeFile(ide.configPath, JSON.stringify(settings, null, 2));
-        
+
         log.success(`Integrated with ${chalk.bold.cyan(ide.name)}`);
         console.log(chalk.gray(`          Path: ${ide.configPath}`));
-        
+
         integrations.push(ide);
-      } catch (e) { 
-          log.error(`Failed to configure ${ide.name}: ${e.message}`); 
+      } catch (e) {
+        log.error(`Failed to configure ${ide.name}: ${e.message}`);
       }
     }
   }
-  
-  if (integrations.length > 0) {
-      const summary = integrations.map(i => 
-          `  ${chalk.green('+')} ${chalk.bold(i.name.padEnd(15))} ${chalk.blue(i.configPath)}`
-      ).join("\n");
 
-      console.log("\n" + boxen(
-          chalk.green.bold("  INTEGRATION COMPLETE!") + "\n\n" +
-          summary + "\n\n" +
-          chalk.white("  Please RESTART your IDEs to apply the new configuration."),
-          { 
-              padding: 1, 
-              borderStyle: 'round', 
-              borderColor: 'green', 
-              title: ' Setup Success ',
-              titleAlignment: 'left'
-          }
-      ));
+  if (integrations.length > 0) {
+    const summary = integrations.map(i =>
+      `  ${chalk.green('+')} ${chalk.bold(i.name.padEnd(15))} ${chalk.blue(i.configPath)}`
+    ).join("\n");
+
+    console.log("\n" + boxen(
+      chalk.green.bold("  INTEGRATION COMPLETE!") + "\n\n" +
+      summary + "\n\n" +
+      chalk.white("  Please RESTART your IDEs to apply the new configuration."),
+      {
+        padding: 1,
+        borderStyle: 'round',
+        borderColor: 'green',
+        title: ' Setup Success ',
+        titleAlignment: 'left'
+      }
+    ));
   } else {
-      log.warn("No compatible IDEs detected on this system.");
+    log.warn("No compatible IDEs detected on this system.");
   }
 }
 
 async function handleGetConfig() {
   const configPath = path.resolve(os.homedir(), ".txamcp", "config.json");
   if (!(await fileExists(configPath))) return log.warn("Authentication required. Run 'txa login'.");
-  
+
   log.step(chalk.bold("Fetching account metadata..."));
   const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
   try {
@@ -481,42 +481,42 @@ async function handleGetConfig() {
     if (data.success) {
       const usage = data.user.request_count;
       const total = data.user.requests_total || 5000;
-      const color = (usage/total > 0.8) ? chalk.red : (usage/total > 0.5) ? chalk.yellow : chalk.green;
-      
+      const color = (usage / total > 0.8) ? chalk.red : (usage / total > 0.5) ? chalk.yellow : chalk.green;
+
       console.log("\n" + boxen(
-          chalk.bold.cyan(" SESSION DETAILS ") + "\n\n" +
-          `${chalk.bold("Identity :")} ${chalk.white(data.user.username)}\n` +
-          `${chalk.bold("Tiers    :")} ${chalk.bold.magenta(data.user.plan_name)}\n` +
-          `${chalk.bold("Activity :")} ${color(usage)} / ${chalk.gray(total)} requests\n` +
-          `${chalk.bold("License  :")} ${chalk.gray(config.apiKey.substring(0, 12) + "...")}`,
-          { padding: 1, borderStyle: 'round', borderColor: 'cyan' }
+        chalk.bold.cyan(" SESSION DETAILS ") + "\n\n" +
+        `${chalk.bold("Identity :")} ${chalk.white(data.user.username)}\n` +
+        `${chalk.bold("Tiers    :")} ${chalk.bold.magenta(data.user.plan_name)}\n` +
+        `${chalk.bold("Activity :")} ${color(usage)} / ${chalk.gray(total)} requests\n` +
+        `${chalk.bold("License  :")} ${chalk.gray(config.apiKey.substring(0, 12) + "...")}`,
+        { padding: 1, borderStyle: 'round', borderColor: 'cyan' }
       ));
     } else {
       log.error("Session expired. Please re-authenticate.");
     }
-  } catch(e) { log.error("Server connection timeout."); }
+  } catch (e) { log.error("Server connection timeout."); }
 }
 
 const args = process.argv.slice(2);
 if (args[0] === "setup") setup().catch(err => log.error(err.message));
 else if (args[0] === "login") {
   const keyIdx = args.indexOf("--api-key");
-  login(keyIdx !== -1 ? args[keyIdx+1] : null).catch(err => log.error(err.message));
+  login(keyIdx !== -1 ? args[keyIdx + 1] : null).catch(err => log.error(err.message));
 }
 else if (args[0] === "get" && args[1] === "config") handleGetConfig().catch(err => log.error(err.message));
 else if (args[0] === "logout") logout().catch(err => log.error(err.message));
 else if (args[0] === "version" || args[0] === "-v" || args[0] === "--v" || args[0] === "--version") {
-    console.log("\n" + boxen(
-        chalk.bold.cyan(" TXAMCP CLI ENGINE ") + "\n\n" +
-        chalk.white(`${chalk.bold('Version :')} ${chalk.bold.green(pkg.version)}\n`) +
-        chalk.white(`${chalk.bold('License :')} ${chalk.yellow('MIT')}\n`) +
-        chalk.white(`${chalk.bold('Channel :')} ${chalk.blue('stable')}`),
-        { padding: 1, borderStyle: 'double', borderColor: 'cyan', title: ' System Info ', titleAlignment: 'center' }
-    ));
+  console.log("\n" + boxen(
+    chalk.bold.cyan(" TXAMCP CLI ENGINE ") + "\n\n" +
+    chalk.white(`${chalk.bold('Version :')} ${chalk.bold.green(pkg.version)}\n`) +
+    chalk.white(`${chalk.bold('License :')} ${chalk.yellow('MIT')}\n`) +
+    chalk.white(`${chalk.bold('Channel :')} ${chalk.blue('stable')}`),
+    { padding: 1, borderStyle: 'double', borderColor: 'cyan', title: ' System Info ', titleAlignment: 'center' }
+  ));
 }
 else {
-    const unknownCmd = args[0];
-    const banner = chalk.bold.cyan(`
+  const unknownCmd = args[0];
+  const banner = chalk.bold.cyan(`
   ████████╗██╗  ██╗ █████╗ 
   ╚══██╔══╝╚██╗██╔╝██╔══██╗
      ██║    ╚███╔╝ ███████║
@@ -525,22 +525,22 @@ else {
      ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝
     `) + chalk.bold.white(`MCP CLI v${pkg.version}`);
 
-    if (unknownCmd && !["help", "--help", "-h"].includes(unknownCmd)) {
-        console.log("");
-        log.error(`Unknown command: ${chalk.bold.red(unknownCmd)}`);
-    }
-
-    console.log(boxen(banner, { padding: 0, borderStyle: 'none', textAlignment: 'center' }));
-    console.log(chalk.gray.italic("    Advanced AI Context Management Hub\n"));
-    
-    console.log(chalk.bold("  COMMANDS:"));
-    console.log(`    ${chalk.cyan("txa login")}        ${chalk.gray("Start automated browser login")}`);
-    console.log(`    ${chalk.cyan("txa setup")}        ${chalk.gray("Configure MCP for all supported IDEs")}`);
-    console.log(`    ${chalk.cyan("txa get config")}   ${chalk.gray("Display current session & usage stats")}`);
-    console.log(`    ${chalk.cyan("txa version")}      ${chalk.gray("Show current version info")}`);
-    console.log(`    ${chalk.cyan("txa logout")}       ${chalk.gray("Terminate local session\n")}`);
-    
-    console.log(chalk.bold("  EXAMPLES:"));
-    console.log(chalk.green("    $ txa login --api-key txamcp-7106..."));
+  if (unknownCmd && !["help", "--help", "-h"].includes(unknownCmd)) {
     console.log("");
+    log.error(`Unknown command: ${chalk.bold.red(unknownCmd)}`);
+  }
+
+  console.log(boxen(banner, { padding: 0, borderStyle: 'none', textAlignment: 'center' }));
+  console.log(chalk.gray.italic("    Advanced AI Context Management Hub\n"));
+
+  console.log(chalk.bold("  COMMANDS:"));
+  console.log(`    ${chalk.cyan("txa login")}        ${chalk.gray("Start automated browser login")}`);
+  console.log(`    ${chalk.cyan("txa setup")}        ${chalk.gray("Configure MCP for all supported IDEs")}`);
+  console.log(`    ${chalk.cyan("txa get config")}   ${chalk.gray("Display current session & usage stats")}`);
+  console.log(`    ${chalk.cyan("txa version")}      ${chalk.gray("Show current version info")}`);
+  console.log(`    ${chalk.cyan("txa logout")}       ${chalk.gray("Terminate local session\n")}`);
+
+  console.log(chalk.bold("  EXAMPLES:"));
+  console.log(chalk.green("    $ txa login --api-key txamcp-7106..."));
+  console.log("");
 }
