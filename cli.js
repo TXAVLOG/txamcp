@@ -388,7 +388,7 @@ function getAppPaths() {
     { name: "Antigravity", configPath: path.join(home, ".gemini", "antigravity", "mcp_config.json") },
     { name: "Windsurf", configPath: path.join(home, ".codeium", "windsurf", "mcp_config.json") },
     { name: "Trae", configPath: platform === "win32" ? path.join(appData, "Trae", "User", "mcp.json") : path.join(home, ".config", "Trae", "User", "mcp.json") },
-    { name: "Cursor", configPath: platform === "win32" ? path.join(appData, "Cursor", "User", "globalStorage", "cursor.mcp", "mcp.json") : path.join(home, ".config", "Cursor", "User", "globalStorage", "cursor.mcp", "mcp.json") },
+    { name: "Cursor", configPath: path.join(home, ".cursor", "mcp.json") },
     { name: "Claude Desktop", configPath: platform === "win32" ? path.join(appData, "Claude", "claude_desktop_config.json") : path.join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json") }
   ].filter(ide => ide.configPath !== "");
 }
@@ -426,7 +426,10 @@ async function setup() {
           "args": [serverPath],
           "env": {
             "API_KEY": apiKey,
-            "HUB_URL": "https://txahub.click"
+            "HUB_URL": "https://txahub.click",
+            "TXAMCP_PROJECT_ROOT": "${workspaceFolder}",
+            "TXAMCP_ACTIVE_FILE": "${file}",
+            "TXAMCP_REQUIRE_ADD_ROOT": "1"
           }
         };
 
