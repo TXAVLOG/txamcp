@@ -495,7 +495,8 @@ const TOOL_IMPLEMENTATIONS = {
             if (os.platform() === 'win32') {
                 if (processName) {
                     const name = processName.toLowerCase().replace('.exe', '');
-                    cmd = `powershell -Command "Get-Process -Name '${name}' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; echo 'Killed ${name}'"`;
+                    const filter = name === 'node' ? ` | Where-Object { $_.Id -ne ${process.pid} }` : '';
+                    cmd = `powershell -Command "Get-Process -Name '${name}' -ErrorAction SilentlyContinue${filter} | Stop-Process -Force -ErrorAction SilentlyContinue; echo 'Killed ${name}'"`;
                 } else {
                     // Comprehensive list for Flutter/Android/Web build processes
                     // Includes adb, aapt, ninja, etc.
@@ -504,7 +505,7 @@ const TOOL_IMPLEMENTATIONS = {
                         'msbuild', 'ninja', 'cmake', 'aapt', 'aapt2', 'gradlew'
                     ];
                     const psList = targets.map(t => `'${t}'`).join(',');
-                    cmd = `powershell -Command "$targets = @(${psList}); foreach ($t in $targets) { Get-Process -Name $t -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue }; echo 'Build and related processes (flutter, adb, java, etc.) have been terminated.'"`;
+                    cmd = `powershell -Command "$targets = @(${psList}); foreach ($t in $targets) { Get-Process -Name $t -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne ${process.pid} } | Stop-Process -Force -ErrorAction SilentlyContinue }; echo 'Build and related processes (flutter, adb, java, etc.) have been terminated.'"`;
                 }
             } else {
                 if (processName) {
@@ -995,10 +996,9 @@ async function processToolCall(toolName, args) {
     const isRequireAddRootEnabled = () => process.env.TXAMCP_REQUIRE_ADD_ROOT === "1";
 
     // Update root state from args
-    updateRootFromToolArgs(args || {});
+    const rootUpdateState = updateRootFromToolArgs(args || {});
 
     if (requiresExplicitRoot(toolName) && isRequireAddRootEnabled()) {
-        const rootUpdateState = await getRootState();
         if (!rootUpdateState.used) {
             return appendMandatoryFooterToResult({
                 content: [{
