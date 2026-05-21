@@ -37,6 +37,30 @@ npm install -g txamcp
 - `txa version`: Show current version info.
 - `txa logout`: Terminate local session.
 
+## Configuration
+
+### Project Root Detection
+TXAMCP automatically detects your project root by searching for common project markers (`.git`, `package.json`, `pubspec.yaml`, etc.). This works seamlessly with most IDEs without additional configuration.
+
+### Advanced Configuration
+For advanced use cases, you can set environment variables:
+
+```bash
+# Force explicit project root requirement (not recommended for most users)
+export TXAMCP_REQUIRE_ADD_ROOT=1
+
+# Set custom project root
+export TXAMCP_PROJECT_ROOT=/path/to/your/project
+
+# Set active file path (IDEs may send this automatically)
+export TXAMCP_ACTIVE_FILE=/path/to/current/file
+```
+
+**Note**: By default, TXAMCP works automatically with IDEs. Only use `TXAMCP_REQUIRE_ADD_ROOT=1` if you need strict control over project root detection.
+
+### IDE Integration
+Most IDEs (Cursor, Windsurf, Trae) automatically send context information like `activeFilePath` or `currentFilePath`. TXAMCP uses this context to dynamically update the project root when needed.
+
 ## Support
 Visit [txahub.click](https://txahub.click) or join our community for support.
 

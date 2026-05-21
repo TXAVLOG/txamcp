@@ -206,18 +206,83 @@ function loadPersistedRoot() {
 }
 
 // --- PATH NORMALIZATION ---
+/**
+ * Security: Enforce that a resolved path is within CURRENT_PROJECT_ROOT
+ * Prevents path traversal attacks and access to files outside the project
+ */
+function isPathWithinProjectRoot(resolvedPath) {
+    const normalizedRoot = path.normalize(CURRENT_PROJECT_ROOT);
+    const normalizedPath = path.normalize(resolvedPath);
+    
+    // Ensure both paths are absolute
+    const absoluteRoot = path.resolve(normalizedRoot);
+    const absolutePath = path.resolve(normalizedPath);
+    
+    // Check if the resolved path starts with the project root
+    const relativePath = path.relative(absoluteRoot, absolutePath);
+    
+    // If relative path starts with '..', it means the path is outside the root
+    return !relativePath.startsWith('..') && !path.isAbsolute(relativePath);
+}
+
+/**
+ * Security: Check if the input path is absolute (reject all absolute paths for security)
+ */
+function isAbsolutePath(receivedPath) {
+    const normalized = path.normalize(receivedPath);
+    return path.isAbsolute(normalized);
+}
+
+/**
+ * Safe path resolution that enforces project root containment
+ * Rejects ALL absolute paths for security (as per security researcher recommendation)
+ */
 function getAbsolutePath(receivedPath) {
     if (!receivedPath || typeof receivedPath !== 'string') {
         throw new Error("Missing or invalid 'path' argument. Please check your tool arguments.");
     }
     const normalized = path.normalize(receivedPath);
-    const absolute = path.isAbsolute(normalized)
-        ? normalized
-        : path.resolve(CURRENT_PROJECT_ROOT, normalized);
+    
+    // Security check: reject ALL absolute paths
+    if (isAbsolutePath(normalized)) {
+        throw new Error(`Security Error: Absolute paths are not allowed. Please use a relative path from the project root (${CURRENT_PROJECT_ROOT}).`);
+    }
+    
+    const absolute = path.resolve(CURRENT_PROJECT_ROOT, normalized);
+
+    // Security check: ensure path is within project root
+    if (!isPathWithinProjectRoot(absolute)) {
+        throw new Error(`Security Error: Path "${receivedPath}" resolves outside the project root (${CURRENT_PROJECT_ROOT}). Path traversal is not allowed.`);
+    }
 
     if (!existsSync(absolute)) {
         throw new Error(`File or directory not found at: ${absolute}`);
     }
+    return absolute;
+}
+
+/**
+ * Safe path resolution for write operations (creates parent dirs if needed)
+ * Rejects ALL absolute paths for security (as per security researcher recommendation)
+ */
+function getAbsolutePathForWrite(receivedPath) {
+    if (!receivedPath || typeof receivedPath !== 'string') {
+        throw new Error("Missing or invalid 'path' argument. Please check your tool arguments.");
+    }
+    const normalized = path.normalize(receivedPath);
+    
+    // Security check: reject ALL absolute paths
+    if (isAbsolutePath(normalized)) {
+        throw new Error(`Security Error: Absolute paths are not allowed. Please use a relative path from the project root (${CURRENT_PROJECT_ROOT}).`);
+    }
+    
+    const absolute = path.resolve(CURRENT_PROJECT_ROOT, normalized);
+
+    // Security check: ensure path is within project root
+    if (!isPathWithinProjectRoot(absolute)) {
+        throw new Error(`Security Error: Path "${receivedPath}" resolves outside the project root (${CURRENT_PROJECT_ROOT}). Path traversal is not allowed.`);
+    }
+
     return absolute;
 }
 
@@ -381,7 +446,7 @@ const TOOL_IMPLEMENTATIONS = {
             content: z.string().describe("New content")
         },
         handler: async ({ filePath, content }) => {
-            const abs = path.resolve(CURRENT_PROJECT_ROOT, filePath);
+            const abs = getAbsolutePathForWrite(filePath);
             await fs.mkdir(path.dirname(abs), { recursive: true });
             await fs.writeFile(abs, content, "utf-8");
             return { content: [{ type: "text", text: `✅ Successfully wrote to ${filePath}.\n\n--- FILE CONTENT ---\n${content}` }] };
@@ -747,7 +812,7 @@ const TOOL_IMPLEMENTATIONS = {
             dirPath: z.string().describe("Directory path")
         },
         handler: async ({ dirPath }) => {
-            const abs = path.resolve(CURRENT_PROJECT_ROOT, dirPath);
+            const abs = getAbsolutePathForWrite(dirPath);
             await fs.mkdir(abs, { recursive: true });
             return { content: [{ type: "text", text: `Successfully created directory: ${dirPath}` }] };
         }
@@ -815,7 +880,7 @@ const TOOL_IMPLEMENTATIONS = {
             dirPath: z.string().default(".").describe("Directory path")
         },
         handler: async ({ dirPath }) => {
-            const abs = path.resolve(CURRENT_PROJECT_ROOT, dirPath);
+            const abs = getAbsolutePath(dirPath);
             const files = await fs.readdir(abs, { withFileTypes: true });
             const list = files.map(f => `${f.isDirectory() ? "📁" : "📄"} ${f.name}`).join("\n");
             return { content: [{ type: "text", text: `Contents of ${dirPath}:\n\n${list}` }] };
@@ -995,19 +1060,26 @@ async function processToolCall(toolName, args) {
     const requiresExplicitRoot = (name) => ["file_search", "search_code", "edit_code", "quick_search_replace"].includes(name);
     const isRequireAddRootEnabled = () => process.env.TXAMCP_REQUIRE_ADD_ROOT === "1";
 
-    // Update root state from args
+    // Update root state from args (IDE may send context like activeFilePath, currentFilePath, etc.)
     const rootUpdateState = updateRootFromToolArgs(args || {});
 
+    // Only enforce add_root requirement if explicitly enabled via environment variable
+    // This allows IDEs to work seamlessly without needing to send custom add_root parameter
     if (requiresExplicitRoot(toolName) && isRequireAddRootEnabled()) {
         if (!rootUpdateState.used) {
             return appendMandatoryFooterToResult({
                 content: [{
                     type: "text",
-                    text: "❌ ROOT REQUIRED: Missing valid project context for file search.\n\nPlease provide `add_root` (project root or active file path) from IDE. TXAMCP requires this when `TXAMCP_REQUIRE_ADD_ROOT=1`."
+                    text: "❌ ROOT REQUIRED: Missing valid project context for file search.\n\nPlease provide `add_root` (project root or active file path) from IDE. TXAMCP requires this when `TXAMCP_REQUIRE_ADD_ROOT=1`.\n\nAlternatively, unset TXAMCP_REQUIRE_ADD_ROOT to use automatic project root detection."
                 }],
                 isError: true
             });
         }
+    }
+
+    // Log root update for debugging
+    if (rootUpdateState.used) {
+        log.info(`Root updated via ${rootUpdateState.source}: ${CURRENT_PROJECT_ROOT}`);
     }
 
     // Account verification
