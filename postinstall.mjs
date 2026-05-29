@@ -15,6 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,5 +76,41 @@ function deployInstructions() {
     }
 }
 
+function installVsixExtension() {
+    try {
+        const files = fs.readdirSync(__dirname);
+        const vsixFile = files.find(f => f.endsWith('.vsix'));
+        if (!vsixFile) {
+            console.log('[TXAMCP] ℹ No .vsix extension package found in npm folder, skipping IDE extension installation.');
+            return;
+        }
+        const absoluteVsixPath = path.join(__dirname, vsixFile);
+
+        const IDES = [
+            { name: 'VS Code', cmd: 'code' },
+            { name: 'Cursor', cmd: 'cursor' },
+            { name: 'Windsurf', cmd: 'windsurf' },
+            { name: 'Trae', cmd: 'trae' }
+        ];
+
+        for (const ide of IDES) {
+            try {
+                // Check if the command exists in PATH by running it with --version
+                execSync(`${ide.cmd} --version`, { stdio: 'ignore' });
+                
+                // If it exists, install the extension!
+                console.log(`[TXAMCP] Attempting to install extension to ${ide.name}...`);
+                execSync(`${ide.cmd} --install-extension "${absoluteVsixPath}"`, { stdio: 'inherit' });
+                console.log(`[TXAMCP] ✔ Successfully installed VS Code extension in ${ide.name}!`);
+            } catch (e) {
+                // Quietly ignore if IDE is not installed or command not in PATH
+            }
+        }
+    } catch (err) {
+        console.log(`[TXAMCP] ⚠ Error during extension auto-install: ${err.message}`);
+    }
+}
+
 // Run
 deployInstructions();
+installVsixExtension();

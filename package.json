@@ -1,6 +1,6 @@
 {
   "name": "txamcp",
-  "version": "3.4.11",
+  "version": "3.4.12",
   "description": "Txa_MCP - Professional MCP Server & CLI for Local AI Context Management",
   "type": "module",
   "main": "mcp-server.mjs",
@@ -14,7 +14,8 @@
     "postinstall.mjs",
     "README.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "*.vsix"
   ],
   "scripts": {
     "start": "node mcp-server.mjs",
