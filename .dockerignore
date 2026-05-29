@@ -1,0 +1,14 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.dockerignore
+.env
+.txamcp
+.txamcp_memory.json
+.txamcp_todo.json
+CVS
+.svn
+.hg
+.lock-wscript
+.DS_Store
