@@ -149,6 +149,39 @@ async function login(apiKey) {
       const port = 3636;
       let poll;
 
+      async function killProcessOnPort(targetPort) {
+        return new Promise((resolve) => {
+          const cmd = os.platform() === 'win32'
+            ? `netstat -ano | findstr :${targetPort}`
+            : `lsof -t -i:${targetPort}`;
+
+          exec(cmd, (err, stdout) => {
+            if (err || !stdout) return resolve();
+            
+            const lines = stdout.split('\n').filter(Boolean);
+            const pids = new Set();
+            for (const line of lines) {
+              const parts = line.trim().split(/\s+/);
+              const pid = parts[parts.length - 1];
+              if (pid && !isNaN(pid) && parseInt(pid) !== process.pid && parseInt(pid) > 0) {
+                pids.add(parseInt(pid));
+              }
+            }
+
+            const killPromises = Array.from(pids).map(pid => {
+              return new Promise((r) => {
+                const killCmd = os.platform() === 'win32'
+                  ? `taskkill /F /PID ${pid}`
+                  : `kill -9 ${pid}`;
+                exec(killCmd, () => r());
+              });
+            });
+
+            Promise.all(killPromises).then(() => resolve());
+          });
+        });
+      }
+
       const cleanup = async (status, key = null, token = null) => {
         if (poll) clearInterval(poll);
         server.close();
@@ -201,7 +234,7 @@ async function login(apiKey) {
                         <div class="p-4 bg-slate-900/50 rounded-2xl border border-slate-800 text-slate-500 text-sm italic mb-8">
                             <i class="bi bi-info-circle mr-2"></i> You can safely close this tab and return to your terminal.
                         </div>
-
+ 
                         <div class="flex items-center justify-center gap-3 text-slate-500">
                             <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
                             <span class="text-xs uppercase tracking-widest font-bold">Connection Secured</span>
@@ -218,7 +251,7 @@ async function login(apiKey) {
                     </script>
                 </body>
                 </html>`;
-
+ 
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
             res.end(html);
             console.log("");
@@ -258,7 +291,7 @@ async function login(apiKey) {
                     </div>
                 </body>
                 </html>`;
-
+ 
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
             res.end(html);
             log.warn("Authorization request was cancelled.");
@@ -266,17 +299,23 @@ async function login(apiKey) {
           }
         }
       });
-
-      server.on('error', (err) => {
+ 
+      server.on('error', async (err) => {
         if (err.code === 'EADDRINUSE') {
-          // Port 3636 is already occupied. This is normal if the background Txa_MCP server is active.
-          // We will fallback to the secure polling flow.
-          console.log(chalk.gray("\n  ℹ Port 3636 is occupied. Using background polling flow..."));
+          console.log(chalk.yellow("\n  ⚠ Port 3636 is occupied. Attempting to free port..."));
+          await killProcessOnPort(port);
+          
+          try {
+            server.listen(port);
+            console.log(chalk.green("  ✔ Port 3636 successfully freed and bound."));
+          } catch (retryErr) {
+            console.log(chalk.gray("  ℹ Could not free port 3636. Using background polling flow..."));
+          }
         } else {
           log.error("Login Server Error: " + err.message);
         }
       });
-
+ 
       try {
         server.listen(port);
       } catch (e) {
