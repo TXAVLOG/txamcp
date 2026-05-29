@@ -1248,16 +1248,98 @@ if (process.env.ENABLE_HTTP_GATEWAY === 'true') {
         }
     });
 
-    app.listen(PORT, () => {
-        log.success(`Txa MCP Gateway v${pkg.version} running on http://localhost:${PORT}`);
-    }).on('error', (err) => {
-        if (err.code === 'EADDRINUSE') {
-            log.error(`Port ${PORT} is already in use. Please change the port via MCP_PORT.`);
-        } else {
-            log.error(`HTTP Gateway Error: ${err.message}`);
+    async function killProcessOnPort(port) {
+        log.info(`Attempting to free port ${port}...`);
+        try {
+            if (os.platform() === 'win32') {
+                const { stdout } = await execPromise(`netstat -ano | findstr :${port}`);
+                const lines = stdout.split('\n').filter(Boolean);
+                const pids = new Set();
+                for (const line of lines) {
+                    const parts = line.trim().split(/\s+/);
+                    const pid = parts[parts.length - 1];
+                    if (pid && !isNaN(pid) && parseInt(pid) !== process.pid && parseInt(pid) > 0) {
+                        pids.add(parseInt(pid));
+                    }
+                }
+                for (const pid of pids) {
+                    log.info(`Killing process ${pid} using port ${port}...`);
+                    await execPromise(`taskkill /F /PID ${pid}`);
+                }
+            } else {
+                const { stdout } = await execPromise(`lsof -t -i:${port}`);
+                const pids = stdout.split('\n').map(p => p.trim()).filter(Boolean);
+                for (const pid of pids) {
+                    if (parseInt(pid) !== process.pid) {
+                        log.info(`Killing process ${pid} using port ${port}...`);
+                        await execPromise(`kill -9 ${pid}`);
+                    }
+                }
+            }
+            log.success(`Port ${port} should be free now.`);
+        } catch (err) {
+            log.warn(`Could not kill process on port ${port}: ${err.message}`);
         }
-        // DO NOT process.exit() - to allow stdio transport to continue functioning
-    });
+    }
+
+    const candidatePorts = [
+        process.env.MCP_PORT ? parseInt(process.env.MCP_PORT) : 3636,
+        3636,
+        2311,
+        36237
+    ].filter((p, i, self) => self.indexOf(p) === i);
+
+    let portIndex = 0;
+
+    async function tryListen(port) {
+        return new Promise((resolve, reject) => {
+            const serverInstance = app.listen(port, () => {
+                const boundPort = serverInstance.address().port;
+                log.success(`Txa MCP Gateway v${pkg.version} running on http://localhost:${boundPort}`);
+                resolve(serverInstance);
+            });
+            
+            serverInstance.on('error', async (err) => {
+                if (err.code === 'EADDRINUSE') {
+                    reject(err);
+                } else {
+                    log.error(`HTTP Gateway Error: ${err.message}`);
+                    resolve(null);
+                }
+            });
+        });
+    }
+
+    async function startGateway() {
+        while (portIndex < candidatePorts.length) {
+            const currentPort = candidatePorts[portIndex];
+            log.info(`Trying to start HTTP Gateway on port ${currentPort}...`);
+            try {
+                const s = await tryListen(currentPort);
+                if (s) return;
+            } catch (err) {
+                log.warn(`Port ${currentPort} is in use. Attempting to kill blocking process...`);
+                await killProcessOnPort(currentPort);
+                
+                try {
+                    const s = await tryListen(currentPort);
+                    if (s) return;
+                } catch (retryErr) {
+                    log.warn(`Failed to free port ${currentPort} after kill. Rotating to next port...`);
+                }
+            }
+            portIndex++;
+        }
+        
+        log.info("All predefined ports occupied. Requesting a random free port from OS...");
+        try {
+            await tryListen(0);
+        } catch (randomErr) {
+            log.error(`Fatal HTTP Gateway Error: Could not start even on random port: ${randomErr.message}`);
+        }
+    }
+
+    startGateway();
 }
 
 // --- AUTO-DEPLOY instructions.md TO IDE MCP FOLDERS ---
