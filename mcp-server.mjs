@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
 import fs from "fs/promises";
 import { existsSync, readFileSync, createReadStream } from "fs";
@@ -371,34 +372,128 @@ const server = new McpServer({
     description: "Txa_MCP - Professional context management for AI IDEs. Provides project-aware tools for memory, todos, auditing, system info, and more.",
 });
 
-// Resources for AI awareness
-server.resource("account_status", "account://status", async (uri) => {
-    let auth;
-    let statusText = "Active";
-    let warning = "";
+// --- SETUP MCP SERVER ---
+async function registerTools(serverInstance) {
+    const allToolNames = Object.keys(TOOL_IMPLEMENTATIONS);
+    let registeredCount = 0;
 
-    try {
-        auth = await verifyWithHub();
-        // Determine nuanced status
-        const usagePercent = (auth.user.request_count / (auth.user.max_requests_per_month || 5000)) * 100;
-        if (usagePercent > 90) {
-            statusText = "Near Limit";
-            warning = " (Warning: You are almost out of requests!)";
+    const now = Date.now();
+    const isCacheFresh = ENABLED_TOOLS_CACHE && (now - LAST_SYNC_TIME < SYNC_INTERVAL);
+
+    if (!isCacheFresh) {
+        // Initial sync to know initial status (but NOT used for filtering)
+        try {
+            log.info("Synchronizing tools status with TXAHUB...");
+            const response = await fetch(`${HUB_URL}/api/tools?api_key=${CONFIG_API_KEY}`, {
+                signal: AbortSignal.timeout(5000)
+            });
+            const data = await response.json();
+
+            if (data.success && data.tools) {
+                ENABLED_TOOLS_CACHE = data.tools.map(t => t.name);
+                BLOCKED_BY_PLAN_CACHE = data.blocked_by_plan || [];
+                DISABLED_REASONS_CACHE = data.disabled_reasons || {};
+                POLICY_META_CACHE = data.policy || null;
+                LAST_SYNC_TIME = now;
+                const disabledCount = allToolNames.length - (ENABLED_TOOLS_CACHE.length + BLOCKED_BY_PLAN_CACHE.length);
+                log.success(`Synced: ${ENABLED_TOOLS_CACHE.length} enabled, ${BLOCKED_BY_PLAN_CACHE.length} blocked by plan, ${disabledCount} disabled by Admin.`);
+            } else {
+                log.warn("Hub returned no tools. All local tools will be registered.");
+            }
+        } catch (err) {
+            log.error(`Hub sync failed (${err.message}). All tools registered in offline mode.`);
         }
-    } catch (err) {
-        statusText = "Inactive/Limit Exceeded";
-        warning = ` (Error: ${err.message})`;
     }
 
-    return {
-        contents: [{
-            uri: uri.href,
-            text: auth
-                ? `TXAMCP Account Status: ${statusText}${warning}\nUser: ${auth.user.username}\nPlan: ${auth.user.plan_name}\nUsage: ${auth.user.request_count}/${auth.user.max_requests_per_month || '5,000'}`
-                : `TXAMCP Account Status: ${statusText}${warning}\nPlease ask the user to run 'txa login' or upgrade their plan.`
+    // ALWAYS register ALL tools - IDE will always see full list
+    // Enabled/disabled check happens REAL-TIME when tool is called
+    for (const toolName of allToolNames) {
+        const impl = TOOL_IMPLEMENTATIONS[toolName];
+        if (impl) {
+            serverInstance.tool(
+                toolName,
+                impl.description,
+                impl.schema,
+                async (args) => {
+                    return await processToolCall(toolName, args);
+                }
+            );
+            registeredCount++;
+        }
+    }
+
+    log.success(`Registered ALL ${registeredCount} tools on this instance (enabled status checked per-call).`);
+
+    if (registeredCount === 0) {
+        serverInstance.tool(
+            "txamcp_notice",
+            "⚠️ NOTICE: No tools are currently enabled for this account.",
+            {},
+            async () => {
+                const auth = await verifyWithHub().catch(() => null);
+                const plan = auth ? auth.user.plan_name : "N/A";
+                return {
+                    content: [{
+                        type: "text",
+                        text: `⚠️ SYSTEM: All tools have been disabled by Admin or your plan (${plan}) does not support them.\n\nACTION: Please upgrade your plan at https://txahub.click/plans or contact Admin for support.`
+                    }],
+                    isError: true
+                };
+            }
+        );
+        log.warn("No tools enabled for this user. Registered notice tool.");
+    } else {
+        log.success(`Successfully initialized ${registeredCount} tools on this instance.`);
+    }
+}
+
+async function setupMcpServer(serverInstance) {
+    // Resources for AI awareness
+    serverInstance.resource("account_status", "account://status", async (uri) => {
+        let auth;
+        let statusText = "Active";
+        let warning = "";
+
+        try {
+            auth = await verifyWithHub();
+            // Determine nuanced status
+            const usagePercent = (auth.user.request_count / (auth.user.max_requests_per_month || 5000)) * 100;
+            if (usagePercent > 90) {
+                statusText = "Near Limit";
+                warning = " (Warning: You are almost out of requests!)";
+            }
+        } catch (err) {
+            statusText = "Inactive/Limit Exceeded";
+            warning = ` (Error: ${err.message})`;
+        }
+
+        return {
+            contents: [{
+                uri: uri.href,
+                text: auth
+                    ? `TXAMCP Account Status: ${statusText}${warning}\nUser: ${auth.user.username}\nPlan: ${auth.user.plan_name}\nUsage: ${auth.user.request_count}/${auth.user.max_requests_per_month || '5,000'}`
+                    : `TXAMCP Account Status: ${statusText}${warning}\nPlease ask the user to run 'txa login' or upgrade their plan.`
+            }]
+        };
+    });
+
+    // Prompts for AI behaviors
+    serverInstance.prompt("fix_minimal", {
+        issue: z.string().describe("Description of error or issue"),
+        code: z.string().describe("Code to fix")
+    }, ({ issue, code }) => ({
+        messages: [{
+            role: "user",
+            content: {
+                type: "text",
+                text: `Please fix the following issue in a minimal way:\nIssue: ${issue}\nCode:\n${code}`
+            }
         }]
-    };
-});
+    }));
+
+    // Register all tools
+    await registerTools(serverInstance);
+}
 
 /**
  * TOOL DEFINITIONS & IMPLEMENTATIONS
@@ -995,19 +1090,7 @@ const TOOL_IMPLEMENTATIONS = {
     }
 };
 
-// Prompts for AI behaviors
-server.prompt("fix_minimal", {
-    issue: z.string().describe("Description of error or issue"),
-    code: z.string().describe("Code to fix")
-}, ({ issue, code }) => ({
-    messages: [{
-        role: "user",
-        content: {
-            type: "text",
-            text: `Please fix the following issue in a minimal way:\nIssue: ${issue}\nCode:\n${code}`
-        }
-    }]
-}));
+// Prompts are registered dynamically per connection instance inside setupMcpServer
 
 let ENABLED_TOOLS_CACHE = null;
 let BLOCKED_BY_PLAN_CACHE = [];
@@ -1151,74 +1234,7 @@ async function processToolCall(toolName, args) {
     }
 }
 
-async function registerTools() {
-    const allToolNames = Object.keys(TOOL_IMPLEMENTATIONS);
-    let registeredCount = 0;
-
-    // Initial sync to know initial status (but NOT used for filtering)
-    try {
-        log.info("Synchronizing tools status with TXAHUB...");
-        const response = await fetch(`${HUB_URL}/api/tools?api_key=${CONFIG_API_KEY}`, {
-            signal: AbortSignal.timeout(5000)
-        });
-        const data = await response.json();
-
-        if (data.success && data.tools) {
-            ENABLED_TOOLS_CACHE = data.tools.map(t => t.name);
-            BLOCKED_BY_PLAN_CACHE = data.blocked_by_plan || [];
-            DISABLED_REASONS_CACHE = data.disabled_reasons || {};
-            POLICY_META_CACHE = data.policy || null;
-            LAST_SYNC_TIME = Date.now();
-            const disabledCount = allToolNames.length - (ENABLED_TOOLS_CACHE.length + BLOCKED_BY_PLAN_CACHE.length);
-            log.success(`Synced: ${ENABLED_TOOLS_CACHE.length} enabled, ${BLOCKED_BY_PLAN_CACHE.length} blocked by plan, ${disabledCount} disabled by Admin.`);
-        } else {
-            log.warn("Hub returned no tools. All local tools will be registered.");
-        }
-    } catch (err) {
-        log.error(`Hub sync failed (${err.message}). All tools registered in offline mode.`);
-    }
-
-    // ALWAYS register ALL tools - IDE will always see full list
-    // Enabled/disabled check happens REAL-TIME when tool is called
-    for (const toolName of allToolNames) {
-        const impl = TOOL_IMPLEMENTATIONS[toolName];
-        if (impl) {
-            server.tool(
-                toolName,
-                impl.description,
-                impl.schema,
-                async (args) => {
-                    return await processToolCall(toolName, args);
-                }
-            );
-            registeredCount++;
-        }
-    }
-
-    log.success(`Registered ALL ${registeredCount} tools (enabled status checked per-call).`);
-
-    if (registeredCount === 0) {
-        server.tool(
-            "txamcp_notice",
-            "⚠️ NOTICE: No tools are currently enabled for this account.",
-            {},
-            async () => {
-                const auth = await verifyWithHub().catch(() => null);
-                const plan = auth ? auth.user.plan_name : "N/A";
-                return {
-                    content: [{
-                        type: "text",
-                        text: `⚠️ SYSTEM: All tools have been disabled by Admin or your plan (${plan}) does not support them.\n\nACTION: Please upgrade your plan at https://txahub.click/plans or contact Admin for support.`
-                    }],
-                    isError: true
-                };
-            }
-        );
-        log.warn("No tools enabled for this user. Registered notice tool.");
-    } else {
-        log.success(`Successfully initialized ${registeredCount} tools.`);
-    }
-}
+// Tool registration is handled dynamically per connection instance inside setupMcpServer
 
 // --- HTTP API (Disabled by default in stdio mode, opt-in via ENABLE_HTTP_GATEWAY=true) ---
 if (process.env.ENABLE_HTTP_GATEWAY === 'true') {
@@ -1346,6 +1362,67 @@ if (process.env.ENABLE_HTTP_GATEWAY === 'true') {
 
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(failHtml);
+    });
+
+    const sseSessions = new Map();
+
+    app.get("/mcp", async (req, res) => {
+        log.info("SSE Connection Request received at GET /mcp");
+        
+        const transport = new SSEServerTransport("/mcp/messages", res);
+        
+        const sseServer = new McpServer({
+            name: "Txa_MCP",
+            version: pkg.version,
+            description: "Txa_MCP - Professional context management for AI IDEs. Provides project-aware tools for memory, todos, auditing, system info, and more.",
+        });
+
+        try {
+            await setupMcpServer(sseServer);
+            await sseServer.connect(transport);
+            
+            const sessionId = transport.sessionId;
+            sseSessions.set(sessionId, { transport, sseServer });
+            log.success(`SSE Connection established with Session ID: ${sessionId}`);
+
+            req.on("close", async () => {
+                log.info(`SSE Connection closed for Session ID: ${sessionId}`);
+                try {
+                    await sseServer.close();
+                } catch (closeErr) {
+                    log.error(`Error closing SSE server session ${sessionId}: ${closeErr.message}`);
+                }
+                sseSessions.delete(sessionId);
+            });
+        } catch (err) {
+            log.error(`Failed to establish SSE connection: ${err.message}`);
+            if (!res.headersSent) {
+                res.status(500).end(`Internal Server Error: ${err.message}`);
+            }
+        }
+    });
+
+    app.post("/mcp/messages", async (req, res) => {
+        const sessionId = req.query.sessionId || req.query.session_id;
+        if (!sessionId) {
+            log.warn("POST /mcp/messages requested without sessionId parameter");
+            return res.status(400).json({ error: "Missing sessionId query parameter" });
+        }
+        
+        const session = sseSessions.get(sessionId);
+        if (session) {
+            try {
+                await session.transport.handlePostMessage(req, res, req.body);
+            } catch (err) {
+                log.error(`Error handling SSE POST message for session ${sessionId}: ${err.message}`);
+                if (!res.headersSent) {
+                    res.status(500).json({ error: err.message });
+                }
+            }
+        } else {
+            log.warn(`POST /mcp/messages: SSE session ${sessionId} not found`);
+            res.status(404).json({ error: `Session ${sessionId} not found` });
+        }
     });
 
     app.use((req, res, next) => {
@@ -1527,12 +1604,11 @@ async function main() {
     // Deploy instructions.md to IDE MCP folders on every startup
     deployInstructionsToIDEs();
 
-    // Register tools ALWAYS - so IDE will always see all tools.
-    // Real-time auth/plan validation happens inside processToolCall when a tool is actually invoked.
+    // Setup resources, prompts, and tools on global server
     try {
-        await registerTools();
+        await setupMcpServer(server);
     } catch (err) {
-        log.error(`Fatal tool registration failed: ${err.message}`);
+        log.error(`Fatal setupMcpServer failed: ${err.message}`);
     }
 
     const transport = new StdioServerTransport();
