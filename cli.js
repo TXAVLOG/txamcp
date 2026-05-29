@@ -510,23 +510,17 @@ async function setup() {
         if (!settings.mcpServers) settings.mcpServers = {};
         delete settings.mcpServers["txamcp"]; // Remove legacy name if exists
         
-        if (ide.name.startsWith("Antigravity")) {
-          settings.mcpServers["Txa_MCP"] = {
-            "serverUrl": "http://localhost:3636/mcp"
-          };
-        } else {
-          settings.mcpServers["Txa_MCP"] = {
-            "command": "node",
-            "args": [serverPath],
-            "env": {
-              "API_KEY": apiKey,
-              "HUB_URL": "https://txahub.click",
-              "TXAMCP_PROJECT_ROOT": "${workspaceFolder}",
-              "TXAMCP_ACTIVE_FILE": "${file}",
-              "TXAMCP_REQUIRE_ADD_ROOT": "1"
-            }
-          };
-        }
+        settings.mcpServers["Txa_MCP"] = {
+          "command": "node",
+          "args": [serverPath],
+          "env": {
+            "API_KEY": apiKey,
+            "HUB_URL": "https://txahub.click",
+            "TXAMCP_PROJECT_ROOT": "${workspaceFolder}",
+            "TXAMCP_ACTIVE_FILE": "${file}",
+            "TXAMCP_REQUIRE_ADD_ROOT": "1"
+          }
+        };
 
         await fs.mkdir(path.dirname(ide.configPath), { recursive: true });
         await fs.writeFile(ide.configPath, JSON.stringify(settings, null, 2));
