@@ -90,7 +90,10 @@ function installVsixExtension() {
             { name: 'VS Code', cmd: 'code' },
             { name: 'Cursor', cmd: 'cursor' },
             { name: 'Windsurf', cmd: 'windsurf' },
-            { name: 'Trae', cmd: 'trae' }
+            { name: 'Trae', cmd: 'trae' },
+            { name: 'Antigravity IDE', cmd: 'antigravity-ide' },
+            { name: 'Antigravity', cmd: 'antigravity' },
+            { name: 'Gemini', cmd: 'gemini' }
         ];
 
         for (const ide of IDES) {
@@ -100,7 +103,7 @@ function installVsixExtension() {
                 
                 // If it exists, install the extension!
                 console.log(`[TXAMCP] Attempting to install extension to ${ide.name}...`);
-                execSync(`${ide.cmd} --install-extension "${absoluteVsixPath}"`, { stdio: 'inherit' });
+                execSync(`${ide.cmd} --install-extension "${absoluteVsixPath}"`, { stdio: 'ignore' });
                 console.log(`[TXAMCP] ✔ Successfully installed VS Code extension in ${ide.name}!`);
             } catch (e) {
                 // Quietly ignore if IDE is not installed or command not in PATH
