@@ -106,6 +106,24 @@ function activate(context) {
         startServer(context);
     }
 
+    // Listen for active editor changes to sync active project root in real-time
+    const trackActiveState = () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor && editor.document && editor.document.uri.scheme === 'file') {
+            saveActiveState(editor.document.fileName);
+        } else if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+            saveActiveState(vscode.workspace.workspaceFolders[0].uri.fsPath);
+        }
+    };
+    
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveTextEditor(trackActiveState),
+        vscode.workspace.onDidChangeWorkspaceFolders(trackActiveState)
+    );
+    
+    // Initial tracking
+    trackActiveState();
+
     outputChannel.appendLine('[Txa MCP] Extension activated successfully.');
 }
 
@@ -602,6 +620,52 @@ async function checkForUpdates(serverScript) {
     } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         outputChannel.appendLine(`[Txa MCP] ⚠ Failed to check for updates: ${errMsg}`);
+    }
+}
+
+/**
+ * Find the project root directory by traversing upwards
+ * @param {string} startDir 
+ * @param {number} steps 
+ * @returns {string}
+ */
+function findProjectRoot(startDir, steps = 0) {
+    if (steps > 10) return startDir;
+    const markers = [".git", "package.json", "pubspec.yaml", "composer.json", "go.mod", "requirements.txt"];
+    try {
+        const stat = fs.statSync(startDir);
+        const dir = stat.isDirectory() ? startDir : path.dirname(startDir);
+        for (const marker of markers) {
+            if (fs.existsSync(path.join(dir, marker))) return dir;
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) return dir;
+        return findProjectRoot(parent, steps + 1);
+    } catch (e) {
+        return startDir;
+    }
+}
+
+/**
+ * Persist the active editor file and project root to the global runtime-state
+ * @param {string} filePath 
+ */
+function saveActiveState(filePath) {
+    const dir = path.join(os.homedir(), '.txamcp');
+    const statePath = path.join(dir, 'runtime-state.json');
+    try {
+        const projectRoot = findProjectRoot(filePath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(statePath, JSON.stringify({
+            currentProjectRoot: projectRoot,
+            activeFilePath: filePath,
+            updatedAt: new Date().toISOString()
+        }, null, 2), 'utf-8');
+    } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        outputChannel.appendLine(`[Txa MCP] Error saving runtime state: ${errMsg}`);
     }
 }
 

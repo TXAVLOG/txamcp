@@ -157,7 +157,17 @@ function findProjectRoot(startDir, steps = 0) {
     return findProjectRoot(parent, steps + 1);
 }
 
+const serverFileDir = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1'));
 let CURRENT_PROJECT_ROOT = findProjectRoot(process.cwd());
+
+// Fallback: If CURRENT_PROJECT_ROOT resolves to a root folder (like C:\ or /) or has no project markers,
+// try to resolve it from the directory where this script is located.
+if ((CURRENT_PROJECT_ROOT === path.parse(CURRENT_PROJECT_ROOT).root || !existsSync(path.join(CURRENT_PROJECT_ROOT, "package.json"))) && existsSync(serverFileDir)) {
+    const fallbackRoot = findProjectRoot(serverFileDir);
+    if (fallbackRoot && fallbackRoot !== path.parse(fallbackRoot).root) {
+        CURRENT_PROJECT_ROOT = fallbackRoot;
+    }
+}
 
 function isTemplatePlaceholder(value) {
     return typeof value === "string" && value.includes("${") && value.includes("}");
@@ -1153,6 +1163,9 @@ async function processToolCall(toolName, args) {
     if (!impl) {
         throw new Error(`Tool '${toolName}' not found.`);
     }
+
+    // Dynamic reload: Load the persisted root state on every tool call!
+    loadPersistedRoot();
 
     const requiresExplicitRoot = (name) => ["file_search", "search_code", "edit_code", "quick_search_replace"].includes(name);
     const isRequireAddRootEnabled = () => process.env.TXAMCP_REQUIRE_ADD_ROOT === "1";
