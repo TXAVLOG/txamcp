@@ -1220,6 +1220,128 @@ if (process.env.ENABLE_HTTP_GATEWAY === 'true') {
     app.use(cors()); // Enable CORS for TXAHUB dashboard interaction
     app.use(express.json());
 
+    function decrypt(data, key = 'txahub') {
+        if (!data) return data;
+        try {
+            const keyBuf = Buffer.alloc(16, 0);
+            keyBuf.write(key);
+            const decipher = crypto.createDecipheriv('aes-128-ecb', keyBuf, null);
+            let decrypted = decipher.update(data, 'base64', 'utf8');
+            decrypted += decipher.final('utf8');
+            return decrypted;
+        } catch (e) {
+            return data;
+        }
+    }
+
+    app.get("/callback", async (req, res) => {
+        const status = req.query.status;
+        const key = req.query.api_key;
+        const token = req.query.token;
+
+        if (status === "success" && key) {
+            try {
+                const decryptedKey = decrypt(key);
+                const decryptedToken = token ? decrypt(token) : null;
+                
+                const configDir = path.resolve(os.homedir(), ".txamcp");
+                const configPath = path.join(configDir, "config.json");
+                
+                const verifyRes = await fetch(`${HUB_URL}/api/verify-key`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ api_key: decryptedKey, cli_token: decryptedToken })
+                });
+                const verifyData = await verifyRes.json();
+                
+                if (verifyData.success) {
+                    await fs.mkdir(configDir, { recursive: true });
+                    await fs.writeFile(configPath, JSON.stringify({
+                        apiKey: decryptedKey,
+                        cliToken: decryptedToken,
+                        user: verifyData.user,
+                        lastSync: new Date().toISOString()
+                    }, null, 2));
+
+                    CONFIG_API_KEY = decryptedKey;
+                    USER_CONTEXT = verifyData;
+                    
+                    const html = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="utf-8">
+                        <title>Authorization Successful - TXAMCP</title>
+                        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bi-icons.min.css" integrity="sha384-X81cNu0i" crossorigin="anonymous" onerror="this.onerror=null;this.href='https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.3/font/bootstrap-icons.min.css';">
+                        <script src="https://cdn.tailwindcss.com"></script>
+                        <style>
+                            body { font-family: 'Outfit', sans-serif; background-color: #020617; }
+                            .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+                        </style>
+                    </head>
+                    <body class="flex items-center justify-center min-h-screen overflow-hidden">
+                        <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-sky-500/10 blur-[120px] rounded-full"></div>
+                        <div class="glass p-12 rounded-[2.5rem] shadow-2xl max-w-lg w-full text-center relative z-10 border-sky-500/20">
+                            <div class="w-24 h-24 bg-emerald-500/10 rounded-3xl flex items-center justify-center text-5xl text-emerald-400 mx-auto mb-8 border border-emerald-500/20">
+                                🔑
+                            </div>
+                            <h1 class="text-4xl font-black text-white mb-4 tracking-tight">SUCCESS!</h1>
+                            <p class="text-slate-400 text-lg mb-8 leading-relaxed">
+                                You have successfully authorized <span class="text-sky-400 font-bold">Txa MCP Server</span>.
+                                Your local development environment is now synchronized.
+                            </p>
+                            <div class="p-4 bg-slate-900/50 rounded-2xl border border-slate-800 text-slate-500 text-sm italic">
+                                You can safely close this tab and return to your IDE.
+                            </div>
+                        </div>
+                    </body>
+                    </html>`;
+                    
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                    res.end(html);
+                    log.success("API Key updated dynamically via web callback!");
+                    return;
+                }
+            } catch (err) {
+                log.error(`Callback dynamic auth update failed: ${err.message}`);
+            }
+        }
+        
+        const failHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Authorization Cancelled - TXAMCP</title>
+            <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+            <script src="https://cdn.tailwindcss.com"></script>
+            <style>
+                body { font-family: 'Outfit', sans-serif; background-color: #020617; }
+                .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+            </style>
+        </head>
+        <body class="flex items-center justify-center min-h-screen overflow-hidden">
+            <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-red-500/5 blur-[120px] rounded-full"></div>
+            <div class="glass p-12 rounded-[2.5rem] shadow-2xl max-w-lg w-full text-center relative z-10 border-red-500/20">
+                <div class="w-24 h-24 bg-red-500/10 rounded-3xl flex items-center justify-center text-5xl text-red-400 mx-auto mb-8 border border-red-500/20">
+                    ❌
+                </div>
+                <h1 class="text-4xl font-black text-white mb-4 tracking-tight uppercase">Cancelled</h1>
+                <p class="text-slate-400 text-lg mb-8 leading-relaxed">
+                    The authorization request was denied or timed out.
+                </p>
+                <div class="p-4 bg-slate-900/50 rounded-2xl border border-slate-800 text-slate-500 text-sm italic">
+                    Return to your IDE or terminal to try again.
+                </div>
+            </div>
+        </body>
+        </html>`;
+
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(failHtml);
+    });
+
     app.use((req, res, next) => {
         const auth = validateHttpApiKey(req);
         if (!auth.valid) {

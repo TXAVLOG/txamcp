@@ -267,7 +267,21 @@ async function login(apiKey) {
         }
       });
 
-      server.listen(port);
+      server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          // Port 3636 is already occupied. This is normal if the background Txa_MCP server is active.
+          // We will fallback to the secure polling flow.
+          console.log(chalk.gray("\n  ℹ Port 3636 is occupied. Using background polling flow..."));
+        } else {
+          log.error("Login Server Error: " + err.message);
+        }
+      });
+
+      try {
+        server.listen(port);
+      } catch (e) {
+        // Fallback to polling
+      }
       const start = (process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open');
       exec(`${start} ${auth_url}`);
 
