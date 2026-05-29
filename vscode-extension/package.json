@@ -1,0 +1,141 @@
+{
+    "name": "txamcp-vscode",
+    "displayName": "Txa MCP — AI Context Management",
+    "description": "Professional MCP server integration for AI-powered IDEs. Provides persistent memory, TODOs, project auditing, and 31+ developer tools.",
+    "version": "3.4.0",
+    "publisher": "txahub",
+    "icon": "icon.png",
+    "engines": {
+        "vscode": "^1.80.0"
+    },
+    "categories": [
+        "Other",
+        "Machine Learning",
+        "Programming Languages"
+    ],
+    "keywords": [
+        "mcp",
+        "ai",
+        "context",
+        "memory",
+        "txamcp",
+        "txa",
+        "copilot",
+        "claude",
+        "gemini"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/txahub/txamcp"
+    },
+    "homepage": "https://txahub.click",
+    "activationEvents": [
+        "onStartupFinished"
+    ],
+    "main": "./extension.js",
+    "contributes": {
+        "configuration": {
+            "title": "Txa MCP",
+            "properties": {
+                "txamcp.apiKey": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "🔑 API Key or OAuth Code for TXAHUB. Paste your key or code here.\n\n[🔗 Sign In / Authenticate](command:txamcp.login) | [🔴 Sign Out / Logout](command:txamcp.logout)",
+                    "order": 1
+                },
+                "txamcp.hubUrl": {
+                    "type": "string",
+                    "default": "https://txahub.click",
+                    "markdownDescription": "🌐 TXAHUB server URL. Only change for self-hosted instances.",
+                    "order": 2
+                },
+                "txamcp.autoStartServer": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "🚀 Automatically start the MCP server when the IDE opens.",
+                    "order": 3
+                },
+                "txamcp.enableHttpGateway": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "🌐 Enable HTTP REST API gateway (for TXAHUB dashboard interaction). Runs on the configured port.",
+                    "order": 4
+                },
+                "txamcp.httpPort": {
+                    "type": "number",
+                    "default": 3636,
+                    "markdownDescription": "🔌 HTTP gateway port (only used when HTTP Gateway is enabled).",
+                    "order": 5
+                },
+                "txamcp.projectRoot": {
+                    "type": "string",
+                    "default": "",
+                    "markdownDescription": "📁 Override project root path. Leave empty for auto-detection (recommended).",
+                    "order": 6
+                },
+                "txamcp.requireAddRoot": {
+                    "type": "boolean",
+                    "default": false,
+                    "markdownDescription": "⚠️ Require explicit `add_root` parameter for file search tools. Disable for seamless IDE integration (recommended).",
+                    "order": 7
+                },
+                "txamcp.logLevel": {
+                    "type": "string",
+                    "default": "info",
+                    "enum": ["error", "warn", "info", "debug"],
+                    "enumDescriptions": [
+                        "Only show errors",
+                        "Show warnings and errors", 
+                        "Show info, warnings, and errors (recommended)",
+                        "Show all messages including debug output"
+                    ],
+                    "markdownDescription": "📝 Log verbosity level for the MCP server output.",
+                    "order": 8
+                }
+            }
+        },
+        "commands": [
+            {
+                "command": "txamcp.startServer",
+                "title": "Txa MCP: Start Server",
+                "category": "Txa MCP"
+            },
+            {
+                "command": "txamcp.stopServer",
+                "title": "Txa MCP: Stop Server",
+                "category": "Txa MCP"
+            },
+            {
+                "command": "txamcp.restartServer",
+                "title": "Txa MCP: Restart Server",
+                "category": "Txa MCP"
+            },
+            {
+                "command": "txamcp.showStatus",
+                "title": "Txa MCP: Show Status",
+                "category": "Txa MCP"
+            },
+            {
+                "command": "txamcp.login",
+                "title": "Txa MCP: Login to TXAHUB",
+                "category": "Txa MCP"
+            },
+            {
+                "command": "txamcp.logout",
+                "title": "Txa MCP: Logout / Disconnect",
+                "category": "Txa MCP"
+            },
+            {
+                "command": "txamcp.openDashboard",
+                "title": "Txa MCP: Open TXAHUB Dashboard",
+                "category": "Txa MCP"
+            }
+        ]
+    },
+    "scripts": {
+        "package": "vsce package --no-dependencies"
+    },
+    "devDependencies": {
+        "@vscode/vsce": "^2.22.0"
+    }
+}

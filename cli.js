@@ -385,7 +385,8 @@ function getAppPaths() {
   const home = os.homedir();
   const appData = process.env.APPDATA || "";
   return [
-    { name: "Antigravity", configPath: path.join(home, ".gemini", "antigravity", "mcp_config.json") },
+    { name: "Antigravity IDE", configPath: path.join(home, ".gemini", "antigravity-ide", "mcp_config.json") },
+    { name: "Antigravity (old)", configPath: path.join(home, ".gemini", "antigravity", "mcp_config.json") },
     { name: "Windsurf", configPath: path.join(home, ".codeium", "windsurf", "mcp_config.json") },
     { name: "Trae", configPath: platform === "win32" ? path.join(appData, "Trae", "User", "mcp.json") : path.join(home, ".config", "Trae", "User", "mcp.json") },
     { name: "Cursor", configPath: path.join(home, ".cursor", "mcp.json") },
