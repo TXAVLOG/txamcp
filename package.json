@@ -1,6 +1,6 @@
 {
   "name": "txamcp",
-  "version": "3.4.6",
+  "version": "3.4.7",
   "description": "Txa_MCP - Professional MCP Server & CLI for Local AI Context Management",
   "type": "module",
   "main": "mcp-server.mjs",

@@ -191,6 +191,19 @@ async function login(apiKey) {
           const decryptedKey = decrypt(key);
           const decryptedToken = decrypt(token);
           await completeLogin(decryptedKey, decryptedToken);
+        } else if (status === "success_already_written") {
+          try {
+            const configPath = path.resolve(os.homedir(), ".txamcp", "config.json");
+            const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+            console.log("\n" + boxen(
+              chalk.green.bold(` ACCESS GRANTED: ${config.user?.username?.toUpperCase() || "USER"} `) + "\n\n" +
+              chalk.white(`${chalk.bold('User :')} ${config.user?.email || config.user?.username}\n`) +
+              chalk.white(`${chalk.bold('Plan :')} ${chalk.cyan(config.user?.plan_name || "FREE")}\n`) +
+              chalk.white(`${chalk.bold('Usage:')} ${chalk.bold(config.user?.request_count || 0)} / ${chalk.gray(config.user?.requests_total || "5,000")}`),
+              { padding: 1, borderStyle: 'round', borderColor: 'green', backgroundColor: '#0f172a' }
+            ));
+            log.success("Session synchronized. CLI is ready for use.");
+          } catch (e) {}
         }
         process.exit(0);
       };
@@ -353,8 +366,27 @@ async function login(apiKey) {
       // Polling fallback
       poll = setInterval(async () => {
         try {
+          const configPath = path.resolve(os.homedir(), ".txamcp", "config.json");
+          if (await fileExists(configPath)) {
+            const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+            if (config.apiKey && config.apiKey.startsWith("txamcp-")) {
+              console.log("");
+              log.success(chalk.bold("Authorization confirmed via local gateway sync!"));
+              await cleanup("success_already_written");
+            }
+          }
+        } catch (e) { }
+
+        try {
           const pollRes = await fetch(`https://txahub.click/api/auth/cli/poll?request_id=${request_id}`);
           const pollData = await pollRes.json();
+          
+          if (pollData.error === 'EXPIRED' || pollData.success === false) {
+            console.log("");
+            log.error("Login request expired. Please run 'txa login' again.");
+            await cleanup("expired");
+          }
+
           if (pollData.status === 'authorized') {
             log.success(chalk.bold("Authorization confirmed via polling!"));
             await cleanup("success", pollData.api_key, pollData.token);
