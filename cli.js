@@ -184,7 +184,9 @@ async function login(apiKey) {
 
       const cleanup = async (status, key = null, token = null) => {
         if (poll) clearInterval(poll);
-        server.close();
+        try {
+          server.close();
+        } catch (e) { }
         if (status === "success" && key) {
           const decryptedKey = decrypt(key);
           const decryptedToken = decrypt(token);
