@@ -477,8 +477,20 @@ function getAppPaths() {
     { name: "Windsurf", configPath: path.join(home, ".codeium", "windsurf", "mcp_config.json") },
     { name: "Trae", configPath: platform === "win32" ? path.join(appData, "Trae", "User", "mcp.json") : path.join(home, ".config", "Trae", "User", "mcp.json") },
     { name: "Cursor", configPath: path.join(home, ".cursor", "mcp.json") },
-    { name: "Claude Desktop", configPath: platform === "win32" ? path.join(appData, "Claude", "claude_desktop_config.json") : path.join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json") }
+    { name: "Claude Desktop", configPath: platform === "win32" ? path.join(appData, "Claude", "claude_desktop_config.json") : path.join(home, "Library", "Application Support", "Claude", "claude_desktop_config.json") },
+    { name: "Kiro IDE (User Config)", configPath: path.join(home, ".kiro", "settings", "mcp.json") }
   ].filter(ide => ide.configPath !== "");
+}
+
+// Detect Kiro IDE project config in current working directory
+async function getKiroProjectConfig() {
+  const cwd = process.cwd();
+  const projectConfigPath = path.join(cwd, ".kiro", "settings", "mcp.json");
+  
+  if (await fileExists(projectConfigPath)) {
+    return { name: "Kiro IDE (Project Config)", configPath: projectConfigPath };
+  }
+  return null;
 }
 
 async function setup() {
@@ -494,8 +506,20 @@ async function setup() {
   const serverPath = path.resolve(__dirname, "mcp-server.mjs");
   let integrations = [];
 
+  // Check for Kiro project config in current directory
+  const kiroProjectConfig = await getKiroProjectConfig();
+  if (kiroProjectConfig) {
+    ides.push(kiroProjectConfig);
+  }
+
   for (const ide of ides) {
-    if (await fileExists(path.dirname(ide.configPath))) {
+    const isKiro = ide.name.includes("Kiro");
+    
+    // For Kiro, check if config directory exists or create it
+    // For other IDEs, check if parent directory exists
+    const targetDir = isKiro ? path.dirname(ide.configPath) : path.dirname(ide.configPath);
+    
+    if (await fileExists(targetDir) || isKiro) {
       try {
         let settings = {};
         if (await fileExists(ide.configPath)) {
@@ -510,17 +534,31 @@ async function setup() {
         if (!settings.mcpServers) settings.mcpServers = {};
         delete settings.mcpServers["txamcp"]; // Remove legacy name if exists
         
-        settings.mcpServers["Txa_MCP"] = {
-          "command": "node",
-          "args": [serverPath],
-          "env": {
-            "API_KEY": apiKey,
-            "HUB_URL": "https://txahub.click",
-            "TXAMCP_PROJECT_ROOT": "${workspaceFolder}",
-            "TXAMCP_ACTIVE_FILE": "${file}",
-            "TXAMCP_REQUIRE_ADD_ROOT": "1"
-          }
-        };
+        // Kiro uses different format: use node with full path to mcp-server
+        if (isKiro) {
+          settings.mcpServers["txamcp"] = {
+            "command": "node",
+            "args": [serverPath],
+            "env": {
+              "API_KEY": apiKey,
+              "HUB_URL": "https://txahub.click"
+            },
+            "disabled": false,
+            "autoApprove": []
+          };
+        } else {
+          settings.mcpServers["Txa_MCP"] = {
+            "command": "node",
+            "args": [serverPath],
+            "env": {
+              "API_KEY": apiKey,
+              "HUB_URL": "https://txahub.click",
+              "TXAMCP_PROJECT_ROOT": "${workspaceFolder}",
+              "TXAMCP_ACTIVE_FILE": "${file}",
+              "TXAMCP_REQUIRE_ADD_ROOT": "1"
+            }
+          };
+        }
 
         await fs.mkdir(path.dirname(ide.configPath), { recursive: true });
         await fs.writeFile(ide.configPath, JSON.stringify(settings, null, 2));
@@ -537,7 +575,7 @@ async function setup() {
 
   if (integrations.length > 0) {
     const summary = integrations.map(i =>
-      `  ${chalk.green('+')} ${chalk.bold(i.name.padEnd(15))} ${chalk.blue(i.configPath)}`
+      `  ${chalk.green('+')} ${chalk.bold(i.name.padEnd(25))} ${chalk.blue(i.configPath)}`
     ).join("\n");
 
     console.log("\n" + boxen(

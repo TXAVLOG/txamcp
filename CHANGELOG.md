@@ -2,6 +2,19 @@
 
 All notable changes to txamcp will be documented in this file.
 
+## [3.5.0] - 2026-06-01
+
+### New Features
+- **Kiro IDE Support**: Added automatic detection and configuration for Kiro IDE
+  - Added Kiro IDE to `getAppPaths()` for user config (`~/.kiro/settings/mcp.json`)
+  - Added `getKiroProjectConfig()` to detect project config in current directory (`.kiro/settings/mcp.json`)
+  - Updated `setup()` command to configure Kiro with correct format
+  - Kiro uses `command: "txa"` instead of `command: "node"` for MCP server
+
+### Improvements
+- Enhanced `txa setup` to detect and configure Kiro IDE project configs automatically
+- Improved integration summary display with better padding for longer IDE names
+
 ## [3.4.0] - 2026-05-21
 
 ### Security Fixes
@@ -35,4 +48,4 @@ All notable changes to txamcp will be documented in this file.
 
 ---
 
-**Note**: Version 3.4.0 includes critical security fixes. All users are strongly recommended to upgrade immediately.
+**Note**: Version 3.5.0 adds Kiro IDE support. Version 3.4.0 includes critical security fixes. All users are strongly recommended to upgrade.
