@@ -534,11 +534,11 @@ async function setup() {
         if (!settings.mcpServers) settings.mcpServers = {};
         delete settings.mcpServers["txamcp"]; // Remove legacy name if exists
         
-        // Kiro uses different format: use node with full path to mcp-server
+        // Kiro uses txa command directly (like Antigravity uses antigravity cli)
         if (isKiro) {
           settings.mcpServers["txamcp"] = {
-            "command": "node",
-            "args": [serverPath],
+            "command": "txa",
+            "args": ["mcp-server"],
             "env": {
               "API_KEY": apiKey,
               "HUB_URL": "https://txahub.click"
@@ -628,7 +628,15 @@ async function handleGetConfig() {
 }
 
 const args = process.argv.slice(2);
-if (args[0] === "setup") setup().catch(err => log.error(err.message));
+if (args[0] === "mcp-server") {
+  // Directly run the MCP server
+  const serverPath = path.resolve(__dirname, "mcp-server.mjs");
+  const serverUrl = os.platform() === 'win32' 
+    ? `file:///${serverPath.replace(/\\/g, '/')}`
+    : `file://${serverPath}`;
+  await import(serverUrl);
+}
+else if (args[0] === "setup") setup().catch(err => log.error(err.message));
 else if (args[0] === "login") {
   const keyIdx = args.indexOf("--api-key");
   login(keyIdx !== -1 ? args[keyIdx + 1] : null).catch(err => log.error(err.message));

@@ -157,6 +157,10 @@ function findProjectRoot(startDir, steps = 0) {
     return findProjectRoot(parent, steps + 1);
 }
 
+function isTemplatePlaceholder(value) {
+    return typeof value === "string" && value.includes("${") && value.includes("}");
+}
+
 const serverFileDir = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1'));
 let CURRENT_PROJECT_ROOT = findProjectRoot(process.cwd());
 
@@ -167,10 +171,6 @@ if ((CURRENT_PROJECT_ROOT === path.parse(CURRENT_PROJECT_ROOT).root || !existsSy
     if (fallbackRoot && fallbackRoot !== path.parse(fallbackRoot).root) {
         CURRENT_PROJECT_ROOT = fallbackRoot;
     }
-}
-
-function isTemplatePlaceholder(value) {
-    return typeof value === "string" && value.includes("${") && value.includes("}");
 }
 
 function getEnvRootCandidates() {

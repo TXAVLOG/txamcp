@@ -90,10 +90,7 @@ function installVsixExtension() {
             { name: 'VS Code', cmd: 'code' },
             { name: 'Cursor', cmd: 'cursor' },
             { name: 'Windsurf', cmd: 'windsurf' },
-            { name: 'Trae', cmd: 'trae' },
-            { name: 'Antigravity IDE', cmd: 'antigravity-ide' },
-            { name: 'Antigravity', cmd: 'antigravity' },
-            { name: 'Gemini', cmd: 'gemini' }
+            { name: 'Trae', cmd: 'trae' }
         ];
 
         for (const ide of IDES) {

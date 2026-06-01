@@ -2,6 +2,14 @@
 
 All notable changes to txamcp will be documented in this file.
 
+## [3.5.1] - 2026-06-01
+
+### Fixes
+- **Kiro IDE**: Changed to use `txa` command with full path instead of `node` for better compatibility
+- Added `getNpmGlobalBinPath()` function to automatically detect npm global bin location
+- Kiro now uses `txa.cmd` (Windows) or `txa` (Unix) with full path from npm global bin
+- Updated both user config and project config for Kiro IDE
+
 ## [3.5.0] - 2026-06-01
 
 ### New Features
