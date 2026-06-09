@@ -7,6 +7,7 @@ node_modules/
 # Local database/memory files
 .txamcp_memory.json
 .txamcp/
+.codegraph/
 
 # Debug logs
 *.log

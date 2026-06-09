@@ -40,7 +40,7 @@
                 "txamcp.apiKey": {
                     "type": "string",
                     "default": "",
-                    "markdownDescription": "🔑 **API Key** or **OAuth Code** for TXAHUB\n\nPaste your key or authorization code here, then restart the server.\n\n---\n**Account Actions:**\n- [🔗 Sign In / Authenticate](command:txamcp.login)\n- [🔴 Sign Out / Logout](command:txamcp.logout)\n- [📊 Open Dashboard](command:txamcp.openDashboard)",
+                    "markdownDescription": "🔑 **API Key** for TXAHUB authentication\n\nPaste your API key here, then use the commands below to manage your account.\n\n---\n**Account Commands:**\n- Press `Ctrl+Shift+P` → `Txa MCP: Login to TXAHUB` to sign in\n- Press `Ctrl+Shift+P` → `Txa MCP: Logout` to sign out\n- Press `Ctrl+Shift+P` → `Txa MCP: Open TXAHUB Dashboard` to view your account",
                     "order": 1
                 },
                 "txamcp.hubUrl": {
@@ -118,12 +118,14 @@
             {
                 "command": "txamcp.login",
                 "title": "Txa MCP: Login to TXAHUB",
-                "category": "Txa MCP"
+                "category": "Txa MCP",
+                "enablement": "!config.txamcp.apiKey || config.txamcp.apiKey == ''"
             },
             {
                 "command": "txamcp.logout",
                 "title": "Txa MCP: Logout / Disconnect",
-                "category": "Txa MCP"
+                "category": "Txa MCP",
+                "enablement": "config.txamcp.apiKey && config.txamcp.apiKey != ''"
             },
             {
                 "command": "txamcp.openDashboard",

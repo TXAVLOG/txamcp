@@ -386,7 +386,7 @@ async function login(apiKey) {
       ));
 
       let statusDots = 0;
-      const statusInterval = setInterval(() => {
+      statusInterval = setInterval(() => {
         statusDots = (statusDots + 1) % 4;
         const dots = '.'.repeat(statusDots);
         process.stdout.write(`\r  ${chalk.cyan('⏳')} ${chalk.gray('Waiting for authorization' + dots.padEnd(3, ' '))}`);

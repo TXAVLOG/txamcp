@@ -19,7 +19,7 @@ let statusBarItem;
  */
 function activate(context) {
     outputChannel = vscode.window.createOutputChannel('Txa MCP');
-    
+
     // Status bar
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
     statusBarItem.command = 'txamcp.showStatus';
@@ -38,11 +38,18 @@ function activate(context) {
         vscode.commands.registerCommand('txamcp.openDashboard', openDashboard)
     );
 
+    // Update auth commands based on current login state
+    updateAuthCommands();
+
     // Watch for configuration changes
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('txamcp')) {
                 onConfigChanged(context);
+                // Update auth commands when API key changes
+                if (e.affectsConfiguration('txamcp.apiKey')) {
+                    updateAuthCommands();
+                }
             }
         })
     );
@@ -82,6 +89,7 @@ function activate(context) {
                                         }
                                     });
                                     syncSettingsToGlobalConfig();
+                                    updateAuthCommands();
                                     restartServer(context);
                                 });
                             } else {
@@ -106,6 +114,7 @@ function activate(context) {
                                 }
                             });
                             syncSettingsToGlobalConfig();
+                            updateAuthCommands();
                             restartServer(context);
                         });
                     }
@@ -145,6 +154,24 @@ function activate(context) {
     trackActiveState();
 
     outputChannel.appendLine('[Txa MCP] Extension activated successfully.');
+}
+
+/**
+ * Check if user is logged in and update auth commands accordingly
+ */
+function updateAuthCommands() {
+    const config = vscode.workspace.getConfiguration('txamcp');
+    const apiKey = /** @type {string} */ (config.get('apiKey', ''));
+    const isLoggedIn = apiKey && apiKey.trim().startsWith('txamcp-') && apiKey.length === 63;
+
+    // Update status bar to show login state
+    if (isLoggedIn) {
+        statusBarItem.text = '$(check) Txa MCP';
+        statusBarItem.tooltip = 'Txa MCP: Connected to TXAHUB';
+    } else {
+        statusBarItem.text = '$(circle-outline) Txa MCP';
+        statusBarItem.tooltip = 'Txa MCP: Not connected to TXAHUB';
+    }
 }
 
 /**
@@ -199,7 +226,7 @@ function deployInstructions(context) {
  */
 function syncSettingsToGlobalConfig() {
     const config = vscode.workspace.getConfiguration('txamcp');
-    const apiKey = config.get('apiKey', '').trim();
+    const apiKey = (/** @type {string} */ (config.get('apiKey', ''))).trim();
     const hubUrl = config.get('hubUrl', 'https://txahub.click');
 
     if (!apiKey) return; // Don't overwrite if no key set in VS Code
@@ -274,10 +301,10 @@ function buildEnvFromSettings() {
     /** @type {Record<string, string | undefined>} */
     const env = { ...process.env };
 
-    const apiKey = config.get('apiKey', '');
+    const apiKey = /** @type {string} */ (config.get('apiKey', ''));
     if (apiKey) env.API_KEY = apiKey;
 
-    const hubUrl = config.get('hubUrl', '');
+    const hubUrl = /** @type {string} */ (config.get('hubUrl', ''));
     if (hubUrl) env.HUB_URL = hubUrl;
 
     env.ENABLE_HTTP_GATEWAY = config.get('enableHttpGateway', false) ? 'true' : 'false';
@@ -447,10 +474,11 @@ function showStatus() {
  */
 async function loginToHub() {
     const config = vscode.workspace.getConfiguration('txamcp');
-    const currentKey = config.get('apiKey', '').trim();
-    
+    const currentKey = /** @type {string} */ (config.get('apiKey', ''));
+    const trimmedKey = currentKey.trim();
+
     // Check if already logged in with a valid API key
-    if (currentKey && currentKey.startsWith('txamcp-') && currentKey.length === 63) {
+    if (trimmedKey && trimmedKey.startsWith('txamcp-') && trimmedKey.length === 63) {
         const action = await vscode.window.showWarningMessage(
             'You are already logged in. Sign out first to switch accounts.',
             'View Status', 'Sign Out', 'Cancel'
@@ -492,7 +520,7 @@ async function loginToHub() {
             // The deep link handler will update config and restart server
             const disposable = vscode.workspace.onDidChangeConfiguration(e => {
                 if (e.affectsConfiguration('txamcp.apiKey')) {
-                    const newKey = vscode.workspace.getConfiguration('txamcp').get('apiKey', '');
+                    const newKey = /** @type {string} */ (vscode.workspace.getConfiguration('txamcp').get('apiKey', ''));
                     if (newKey && newKey.startsWith('txamcp-')) {
                         clearTimeout(timeout);
                         disposable.dispose();
@@ -637,7 +665,10 @@ async function logoutFromHub() {
 
     // Stop the MCP server
     stopServer();
-    
+
+    // Update auth commands to reflect logged out state
+    updateAuthCommands();
+
     vscode.window.showInformationMessage('Txa MCP: Logged out successfully. Session cleared.');
 }
 
