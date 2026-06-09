@@ -148,6 +148,7 @@ async function login(apiKey) {
       const { request_id, auth_url } = data;
       const port = 3636;
       let poll;
+      let statusInterval;
 
       async function killProcessOnPort(targetPort) {
         return new Promise((resolve) => {
@@ -183,11 +184,16 @@ async function login(apiKey) {
       }
 
       const cleanup = async (status, key = null, token = null) => {
+        if (statusInterval) clearInterval(statusInterval);
         if (poll) clearInterval(poll);
+        process.stdout.write('\r' + ' '.repeat(80) + '\r'); // Clear status line
         try {
           server.close();
         } catch (e) { }
+        
         if (status === "success" && key) {
+          console.log("");
+          log.success(chalk.bold("✓ Authorization confirmed! Syncing credentials..."));
           const decryptedKey = decrypt(key);
           const decryptedToken = decrypt(token);
           await completeLogin(decryptedKey, decryptedToken);
@@ -196,14 +202,22 @@ async function login(apiKey) {
             const configPath = path.resolve(os.homedir(), ".txamcp", "config.json");
             const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
             console.log("\n" + boxen(
-              chalk.green.bold(` ACCESS GRANTED: ${config.user?.username?.toUpperCase() || "USER"} `) + "\n\n" +
+              chalk.green.bold(` ✓ ACCESS GRANTED: ${config.user?.username?.toUpperCase() || "USER"} `) + "\n\n" +
               chalk.white(`${chalk.bold('User :')} ${config.user?.email || config.user?.username}\n`) +
               chalk.white(`${chalk.bold('Plan :')} ${chalk.cyan(config.user?.plan_name || "FREE")}\n`) +
               chalk.white(`${chalk.bold('Usage:')} ${chalk.bold(config.user?.request_count || 0)} / ${chalk.gray(config.user?.requests_total || "5,000")}`),
               { padding: 1, borderStyle: 'round', borderColor: 'green', backgroundColor: '#0f172a' }
             ));
             log.success("Session synchronized. CLI is ready for use.");
-          } catch (e) {}
+          } catch (e) {
+            log.success("Authentication complete! Session synchronized.");
+          }
+        } else if (status === "expired") {
+          console.log("");
+          log.error("⏱ Login request expired after 5 minutes. Please try again.");
+        } else if (status === "cancelled") {
+          console.log("");
+          log.warn("✗ Authorization was cancelled by user.");
         }
         process.exit(0);
       };
@@ -221,7 +235,7 @@ async function login(apiKey) {
                 <html>
                 <head>
                     <meta charset="utf-8">
-                    <title>Authorization Successful - TXAMCP</title>
+                    <title>✓ Authorization Successful - TXAMCP</title>
                     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
                     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
                     <script src="https://cdn.tailwindcss.com"></script>
@@ -230,47 +244,65 @@ async function login(apiKey) {
                         .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
                         .animate-float { animation: float 6s ease-in-out infinite; }
                         @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-20px); } }
+                        .pulse-success { animation: pulse-success 2s ease-in-out infinite; }
+                        @keyframes pulse-success { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
                     </style>
                 </head>
                 <body class="flex items-center justify-center min-h-screen overflow-hidden">
-                    <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-sky-500/10 blur-[120px] rounded-full"></div>
+                    <div class="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-emerald-500/10 blur-[120px] rounded-full"></div>
                     
-                    <div class="glass p-12 rounded-[2.5rem] shadow-2xl max-w-lg w-full text-center relative z-10 border-sky-500/20">
+                    <div class="glass p-12 rounded-[2.5rem] shadow-2xl max-w-lg w-full text-center relative z-10 border-emerald-500/20">
                         <div class="w-24 h-24 bg-emerald-500/10 rounded-3xl flex items-center justify-center text-5xl text-emerald-400 mx-auto mb-8 animate-bounce shadow-lg shadow-emerald-500/20 border border-emerald-500/20">
                             <i class="bi bi-check-circle-fill"></i>
                         </div>
                         
-                        <h1 class="text-4xl font-black text-white mb-4 tracking-tight">SUCCESS!</h1>
-                        <p class="text-slate-400 text-lg mb-8 leading-relaxed">
-                            You have successfully authorized <span class="text-sky-400 font-bold">TXA CLI</span>.
-                            Your local development environment is now synchronized.
+                        <h1 class="text-4xl font-black text-white mb-4 tracking-tight">✓ SUCCESS!</h1>
+                        <p class="text-slate-400 text-lg mb-6 leading-relaxed">
+                            You have successfully authorized <span class="text-emerald-400 font-bold">TXA CLI</span>.
                         </p>
                         
-                        <div class="p-4 bg-slate-900/50 rounded-2xl border border-slate-800 text-slate-500 text-sm italic mb-8">
-                            <i class="bi bi-info-circle mr-2"></i> You can safely close this tab and return to your terminal.
+                        <div class="p-4 bg-emerald-900/20 rounded-2xl border border-emerald-500/30 mb-6">
+                            <p class="text-emerald-400 font-semibold mb-2">
+                                <i class="bi bi-terminal mr-2"></i>Return to Your Terminal
+                            </p>
+                            <p class="text-slate-400 text-sm">
+                                Your CLI is now authenticated and ready to use. Check your terminal for confirmation.
+                            </p>
                         </div>
  
-                        <div class="flex items-center justify-center gap-3 text-slate-500">
-                            <span class="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                        <div class="flex items-center justify-center gap-3 text-slate-500 mb-4">
+                            <span class="w-2 h-2 bg-emerald-500 rounded-full pulse-success"></span>
                             <span class="text-xs uppercase tracking-widest font-bold">Connection Secured</span>
                         </div>
+                        
+                        <p class="text-slate-500 text-xs italic">
+                            This window will close automatically in a few seconds
+                        </p>
                     </div>
                     
                     <script>
                         setTimeout(() => { 
                             window.close(); 
                             // Fallback for browsers that block window.close()
-                            document.querySelector('h1').innerText = "DONE!";
-                            document.querySelector('p').innerText = "You can now return to your terminal.";
-                        }, 1500);
+                            if (!window.closed) {
+                                document.querySelector('h1').innerText = "✓ DONE!";
+                                document.querySelector('p.text-slate-400.text-lg').innerHTML = 
+                                    "This browser tab can be safely closed now.<br><span class='text-sm text-slate-500'>Return to your terminal to continue.</span>";
+                            }
+                        }, 3000);
                     </script>
                 </body>
                 </html>`;
  
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
             res.end(html);
+            
+            // Clear the waiting animation
+            if (statusInterval) clearInterval(statusInterval);
+            process.stdout.write('\r' + ' '.repeat(80) + '\r');
             console.log("");
-            log.success(chalk.bold("Authorization received from browser!"));
+            log.success(chalk.bold("✓ Authorization received from browser! Processing..."));
+            
             await cleanup("success", key, token);
           } else {
             const html = `
@@ -309,6 +341,11 @@ async function login(apiKey) {
  
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
             res.end(html);
+            
+            // Clear the waiting animation
+            if (statusInterval) clearInterval(statusInterval);
+            process.stdout.write('\r' + ' '.repeat(80) + '\r');
+            
             log.warn("Authorization request was cancelled.");
             await cleanup("cancelled");
           }
@@ -344,12 +381,21 @@ async function login(apiKey) {
         chalk.gray("A browser window should have opened automatically.\n") +
         chalk.gray("If not, please copy and paste this URL:\n\n") +
         chalk.cyan.underline(auth_url) + "\n\n" +
-        chalk.magenta.italic("Waiting for secure connection..."),
+        chalk.magenta.italic("⏳ Waiting for authorization..."),
         { padding: 1, borderStyle: 'double', borderColor: 'magenta', title: ' OAuth 2.0 Auth ', titleAlignment: 'center' }
       ));
 
+      let statusDots = 0;
+      const statusInterval = setInterval(() => {
+        statusDots = (statusDots + 1) % 4;
+        const dots = '.'.repeat(statusDots);
+        process.stdout.write(`\r  ${chalk.cyan('⏳')} ${chalk.gray('Waiting for authorization' + dots.padEnd(3, ' '))}`);
+      }, 500);
+
       // Handle Ctrl+C to notify server
       const handleAbort = async () => {
+        if (statusInterval) clearInterval(statusInterval);
+        process.stdout.write('\r' + ' '.repeat(80) + '\r'); // Clear status line
         console.log('\n\n  ' + chalk.yellow('!') + ' Aborting login flow...');
         try {
           await fetch("https://txahub.click/api/auth/cli/cancel", {
@@ -364,12 +410,22 @@ async function login(apiKey) {
       process.on('SIGINT', handleAbort);
 
       // Polling fallback
+      let pollCount = 0;
       poll = setInterval(async () => {
+        pollCount++;
+        
+        // Every 10 polls (30 seconds), show a hint
+        if (pollCount % 10 === 0) {
+          process.stdout.write('\r' + ' '.repeat(80) + '\r');
+          console.log(`  ${chalk.cyan('💡')} ${chalk.gray('Tip: Make sure to click "Authorize" in your browser')}`);
+        }
+        
         try {
           const configPath = path.resolve(os.homedir(), ".txamcp", "config.json");
           if (await fileExists(configPath)) {
             const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
             if (config.apiKey && config.apiKey.startsWith("txamcp-")) {
+              process.stdout.write('\r' + ' '.repeat(80) + '\r');
               console.log("");
               log.success(chalk.bold("Authorization confirmed via local gateway sync!"));
               await cleanup("success_already_written");
@@ -382,16 +438,16 @@ async function login(apiKey) {
           const pollData = await pollRes.json();
           
           if (pollData.error === 'EXPIRED' || pollData.success === false) {
-            console.log("");
-            log.error("Login request expired. Please run 'txa login' again.");
+            process.stdout.write('\r' + ' '.repeat(80) + '\r');
             await cleanup("expired");
           }
 
           if (pollData.status === 'authorized') {
+            process.stdout.write('\r' + ' '.repeat(80) + '\r');
             log.success(chalk.bold("Authorization confirmed via polling!"));
             await cleanup("success", pollData.api_key, pollData.token);
           } else if (pollData.status === 'cancelled') {
-            log.warn("Login was cancelled on the website.");
+            process.stdout.write('\r' + ' '.repeat(80) + '\r');
             await cleanup("cancelled");
           }
         } catch (e) { }

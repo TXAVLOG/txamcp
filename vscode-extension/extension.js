@@ -61,6 +61,8 @@ function activate(context) {
                     
                     if (isCode) {
                         outputChannel.appendLine(`[Txa MCP] Exchanging deep link code: ${code}`);
+                        vscode.window.showInformationMessage('Txa MCP: Exchanging authorization code...');
+                        
                         fetch(`${hubUrl}/api/auth/antigravity/exchange`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -70,21 +72,39 @@ function activate(context) {
                         .then(data => {
                             if (data.success && data.api_key) {
                                 config.update('apiKey', data.api_key, vscode.ConfigurationTarget.Global).then(() => {
-                                    vscode.window.showInformationMessage('Txa MCP: Successfully authenticated and synced API Key! Restarting server...');
+                                    outputChannel.appendLine('[Txa MCP] ✔ Authentication successful!');
+                                    vscode.window.showInformationMessage(
+                                        '✅ Txa MCP: Successfully authenticated! Restarting server...',
+                                        'View Status'
+                                    ).then(action => {
+                                        if (action === 'View Status') {
+                                            vscode.commands.executeCommand('txamcp.showStatus');
+                                        }
+                                    });
                                     syncSettingsToGlobalConfig();
                                     restartServer(context);
                                 });
                             } else {
-                                vscode.window.showErrorMessage(`Txa MCP: Callback exchange failed: ${data.message || 'Invalid code'}`);
+                                outputChannel.appendLine(`[Txa MCP] ✖ Exchange failed: ${data.message}`);
+                                vscode.window.showErrorMessage(`Txa MCP: Authorization failed - ${data.message || 'Invalid code'}. Please try again.`);
                             }
                         })
                         .catch(err => {
                             const errMsg = err instanceof Error ? err.message : String(err);
-                            vscode.window.showErrorMessage(`Txa MCP: Connection error: ${errMsg}`);
+                            outputChannel.appendLine(`[Txa MCP] ✖ Connection error: ${errMsg}`);
+                            vscode.window.showErrorMessage(`Txa MCP: Connection error - ${errMsg}. Check your network.`);
                         });
                     } else {
                         config.update('apiKey', code, vscode.ConfigurationTarget.Global).then(() => {
-                            vscode.window.showInformationMessage('Txa MCP: Successfully authenticated and synced API Key! Restarting server...');
+                            outputChannel.appendLine('[Txa MCP] ✔ API Key saved successfully!');
+                            vscode.window.showInformationMessage(
+                                '✅ Txa MCP: Successfully authenticated! Restarting server...',
+                                'View Status'
+                            ).then(action => {
+                                if (action === 'View Status') {
+                                    vscode.commands.executeCommand('txamcp.showStatus');
+                                }
+                            });
                             syncSettingsToGlobalConfig();
                             restartServer(context);
                         });
@@ -425,8 +445,24 @@ function showStatus() {
 /**
  * Login to TXAHUB via browser SSO or terminal fallback
  */
-function loginToHub() {
+async function loginToHub() {
     const config = vscode.workspace.getConfiguration('txamcp');
+    const currentKey = config.get('apiKey', '').trim();
+    
+    // Check if already logged in with a valid API key
+    if (currentKey && currentKey.startsWith('txamcp-') && currentKey.length === 63) {
+        const action = await vscode.window.showWarningMessage(
+            'You are already logged in. Sign out first to switch accounts.',
+            'View Status', 'Sign Out', 'Cancel'
+        );
+        if (action === 'View Status') {
+            vscode.commands.executeCommand('txamcp.showStatus');
+        } else if (action === 'Sign Out') {
+            await logoutFromHub();
+        }
+        return;
+    }
+    
     const hubUrl = config.get('hubUrl', 'https://txahub.click');
     const state = Math.random().toString(36).substring(2, 15);
     
@@ -435,14 +471,48 @@ function loginToHub() {
     vscode.env.openExternal(vscode.Uri.parse(`${hubUrl}/auth/antigravity?client=antigravity&state=${state}`));
     
     outputChannel.appendLine('[Txa MCP] Opening Web Authentication SSO...');
+    outputChannel.appendLine('[Txa MCP] Waiting for authorization callback...');
+    
+    const progressOptions = {
+        location: vscode.ProgressLocation.Notification,
+        title: 'Txa MCP: Waiting for authorization...',
+        cancellable: false
+    };
+    
+    vscode.window.withProgress(progressOptions, async (progress) => {
+        progress.report({ message: 'Complete the login in your browser. This window will auto-close upon success.' });
+        
+        // Wait up to 5 minutes for authorization
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                outputChannel.appendLine('[Txa MCP] Authorization timeout. You can manually paste the API key in settings.');
+                resolve(null);
+            }, 300000); // 5 minutes
+            
+            // The deep link handler will update config and restart server
+            const disposable = vscode.workspace.onDidChangeConfiguration(e => {
+                if (e.affectsConfiguration('txamcp.apiKey')) {
+                    const newKey = vscode.workspace.getConfiguration('txamcp').get('apiKey', '');
+                    if (newKey && newKey.startsWith('txamcp-')) {
+                        clearTimeout(timeout);
+                        disposable.dispose();
+                        resolve(null);
+                    }
+                }
+            });
+        });
+    });
+    
     vscode.window.showInformationMessage(
-        'Opening Txa Hub SSO in your browser. Once authorized, it will automatically sync back to your IDE. If redirect does not occur, you can run txa login in CLI.',
-        'CLI Login Fallback'
+        'Browser opened for authentication. Having issues? Try CLI fallback.',
+        'CLI Login Fallback', 'Manual Key Entry'
     ).then(action => {
         if (action === 'CLI Login Fallback') {
             const terminal = vscode.window.createTerminal('Txa MCP Login');
             terminal.show();
             terminal.sendText('txa login');
+        } else if (action === 'Manual Key Entry') {
+            vscode.commands.executeCommand('workbench.action.openSettings', 'txamcp.apiKey');
         }
     });
 }

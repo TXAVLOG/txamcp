@@ -253,8 +253,10 @@ function isAbsolutePath(receivedPath) {
 /**
  * Safe path resolution that enforces project root containment
  * Allows absolute paths ONLY if they resolve within the project root
+ * @param {string} receivedPath - The path to resolve
+ * @param {boolean} allowExternalAccess - If true, allows access outside project root (requires explicit confirmation)
  */
-function getAbsolutePath(receivedPath) {
+function getAbsolutePath(receivedPath, allowExternalAccess = false) {
     if (!receivedPath || typeof receivedPath !== 'string') {
         throw new Error("Missing or invalid 'path' argument. Please check your tool arguments.");
     }
@@ -265,9 +267,12 @@ function getAbsolutePath(receivedPath) {
         ? normalized
         : path.resolve(CURRENT_PROJECT_ROOT, normalized);
 
-    // Security check: ensure path is within project root
-    if (!isPathWithinProjectRoot(absolute)) {
-        throw new Error(`Security Error: Path "${receivedPath}" resolves outside the project root (${CURRENT_PROJECT_ROOT}). Path traversal is not allowed.`);
+    // Security check: ensure path is within project root (unless explicitly allowed)
+    if (!allowExternalAccess && !isPathWithinProjectRoot(absolute)) {
+        throw new Error(
+            `Security Error: Path "${receivedPath}" resolves outside the project root (${CURRENT_PROJECT_ROOT}). ` +
+            `To access files outside the project, the AI must set "allow_external_access": true and you must explicitly approve it.`
+        );
     }
 
     if (!existsSync(absolute)) {
@@ -279,8 +284,10 @@ function getAbsolutePath(receivedPath) {
 /**
  * Safe path resolution for write operations (creates parent dirs if needed)
  * Allows absolute paths ONLY if they resolve within the project root
+ * @param {string} receivedPath - The path to resolve
+ * @param {boolean} allowExternalAccess - If true, allows access outside project root (requires explicit confirmation)
  */
-function getAbsolutePathForWrite(receivedPath) {
+function getAbsolutePathForWrite(receivedPath, allowExternalAccess = false) {
     if (!receivedPath || typeof receivedPath !== 'string') {
         throw new Error("Missing or invalid 'path' argument. Please check your tool arguments.");
     }
@@ -291,9 +298,12 @@ function getAbsolutePathForWrite(receivedPath) {
         ? normalized
         : path.resolve(CURRENT_PROJECT_ROOT, normalized);
 
-    // Security check: ensure path is within project root
-    if (!isPathWithinProjectRoot(absolute)) {
-        throw new Error(`Security Error: Path "${receivedPath}" resolves outside the project root (${CURRENT_PROJECT_ROOT}). Path traversal is not allowed.`);
+    // Security check: ensure path is within project root (unless explicitly allowed)
+    if (!allowExternalAccess && !isPathWithinProjectRoot(absolute)) {
+        throw new Error(
+            `Security Error: Path "${receivedPath}" resolves outside the project root (${CURRENT_PROJECT_ROOT}). ` +
+            `To access files outside the project, the AI must set "allow_external_access": true and you must explicitly approve it.`
+        );
     }
 
     return absolute;
@@ -538,10 +548,11 @@ const TOOL_IMPLEMENTATIONS = {
     "read_file": {
         description: "Read file content.",
         schema: {
-            filePath: z.string().describe("File path")
+            filePath: z.string().describe("File path"),
+            allow_external_access: z.boolean().optional().describe("Set to true to allow reading files outside the project root. User must explicitly approve this action.")
         },
-        handler: async ({ filePath }) => {
-            const abs = getAbsolutePath(filePath);
+        handler: async ({ filePath, allow_external_access }) => {
+            const abs = getAbsolutePath(filePath, allow_external_access || false);
             const content = await fs.readFile(abs, "utf-8");
             return { content: [{ type: "text", text: content }] };
         }
@@ -550,10 +561,11 @@ const TOOL_IMPLEMENTATIONS = {
         description: "Overwrite file content (Full).",
         schema: {
             filePath: z.string().describe("File path"),
-            content: z.string().describe("New content")
+            content: z.string().describe("New content"),
+            allow_external_access: z.boolean().optional().describe("Set to true to allow writing files outside the project root. User must explicitly approve this action.")
         },
-        handler: async ({ filePath, content }) => {
-            const abs = getAbsolutePathForWrite(filePath);
+        handler: async ({ filePath, content, allow_external_access }) => {
+            const abs = getAbsolutePathForWrite(filePath, allow_external_access || false);
             await fs.mkdir(path.dirname(abs), { recursive: true });
             await fs.writeFile(abs, content, "utf-8");
             return { content: [{ type: "text", text: `✅ Successfully wrote to ${filePath}.\n\n--- FILE CONTENT ---\n${content}` }] };
@@ -734,10 +746,11 @@ const TOOL_IMPLEMENTATIONS = {
         description: "Get detailed information about a file (Size, Modified Date, Permissions).",
         schema: {
             filePath: z.string().describe("File path"),
-            hashAlgorithm: z.string().optional().describe("Hash algorithm (sha256, md5, sha1). Empty = return all.")
+            hashAlgorithm: z.string().optional().describe("Hash algorithm (sha256, md5, sha1). Empty = return all."),
+            allow_external_access: z.boolean().optional().describe("Set to true to allow accessing files outside the project root. User must explicitly approve this action.")
         },
-        handler: async ({ filePath, hashAlgorithm }) => {
-            const abs = getAbsolutePath(filePath);
+        handler: async ({ filePath, hashAlgorithm, allow_external_access }) => {
+            const abs = getAbsolutePath(filePath, allow_external_access || false);
             const stats = await fs.stat(abs);
             const ext = path.extname(abs).toLowerCase();
             const fileName = path.basename(abs);
@@ -902,10 +915,11 @@ const TOOL_IMPLEMENTATIONS = {
         schema: {
             filePath: z.string().describe("File path"),
             oldText: z.string().describe("Text to replace"),
-            newText: z.string().describe("New text")
+            newText: z.string().describe("New text"),
+            allow_external_access: z.boolean().optional().describe("Set to true to allow modifying files outside the project root. User must explicitly approve this action.")
         },
-        handler: async ({ filePath, oldText, newText }) => {
-            const abs = getAbsolutePath(filePath);
+        handler: async ({ filePath, oldText, newText, allow_external_access }) => {
+            const abs = getAbsolutePath(filePath, allow_external_access || false);
             const content = await fs.readFile(abs, "utf-8");
             // Escape regex special characters to treat oldText as literal string
             const escaped = oldText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -917,10 +931,11 @@ const TOOL_IMPLEMENTATIONS = {
     "delete_file": {
         description: "Delete a file (Use with caution).",
         schema: {
-            filePath: z.string().describe("Path of file to delete")
+            filePath: z.string().describe("Path of file to delete"),
+            allow_external_access: z.boolean().optional().describe("Set to true to allow deleting files outside the project root. User must explicitly approve this action.")
         },
-        handler: async ({ filePath }) => {
-            const abs = getAbsolutePath(filePath);
+        handler: async ({ filePath, allow_external_access }) => {
+            const abs = getAbsolutePath(filePath, allow_external_access || false);
             await fs.unlink(abs);
             return { content: [{ type: "text", text: `Successfully deleted ${filePath}` }] };
         }
@@ -928,10 +943,11 @@ const TOOL_IMPLEMENTATIONS = {
     "create_directory": {
         description: "Create a new directory (Including parent directories).",
         schema: {
-            dirPath: z.string().describe("Directory path")
+            dirPath: z.string().describe("Directory path"),
+            allow_external_access: z.boolean().optional().describe("Set to true to allow creating directories outside the project root. User must explicitly approve this action.")
         },
-        handler: async ({ dirPath }) => {
-            const abs = getAbsolutePathForWrite(dirPath);
+        handler: async ({ dirPath, allow_external_access }) => {
+            const abs = getAbsolutePathForWrite(dirPath, allow_external_access || false);
             await fs.mkdir(abs, { recursive: true });
             return { content: [{ type: "text", text: `Successfully created directory: ${dirPath}` }] };
         }
@@ -941,10 +957,11 @@ const TOOL_IMPLEMENTATIONS = {
         schema: {
             filePath: z.string().describe("File path"),
             oldCode: z.string().describe("Old code to replace (must match exactly)"),
-            newCode: z.string().describe("New code to replace with")
+            newCode: z.string().describe("New code to replace with"),
+            allow_external_access: z.boolean().optional().describe("Set to true to allow modifying files outside the project root. User must explicitly approve this action.")
         },
-        handler: async ({ filePath, oldCode, newCode }) => {
-            const abs = getAbsolutePath(filePath);
+        handler: async ({ filePath, oldCode, newCode, allow_external_access }) => {
+            const abs = getAbsolutePath(filePath, allow_external_access || false);
             const content = await fs.readFile(abs, "utf-8");
             if (!content.includes(oldCode)) {
                 return {
@@ -963,10 +980,11 @@ const TOOL_IMPLEMENTATIONS = {
             filePath: z.string().describe("File path"),
             searchPattern: z.string().describe("Text string or Regex pattern to find"),
             replacement: z.string().describe("Replacement content"),
-            useRegex: z.boolean().default(false).describe("Enable to use Regular Expression")
+            useRegex: z.boolean().default(false).describe("Enable to use Regular Expression"),
+            allow_external_access: z.boolean().optional().describe("Set to true to allow modifying files outside the project root. User must explicitly approve this action.")
         },
-        handler: async ({ filePath, searchPattern, replacement, useRegex }) => {
-            const abs = getAbsolutePath(filePath);
+        handler: async ({ filePath, searchPattern, replacement, useRegex, allow_external_access }) => {
+            const abs = getAbsolutePath(filePath, allow_external_access || false);
             const content = await fs.readFile(abs, "utf-8");
             let updated;
             if (useRegex) {
@@ -979,27 +997,128 @@ const TOOL_IMPLEMENTATIONS = {
         }
     },
     "fetch_url": {
-        description: "Tải nội dung từ một URL (Dùng để AI đọc tài liệu online).",
+        description: "Đọc nội dung trang web dưới dạng văn bản/markdown thông qua Cloud Proxy của TXAHUB để tránh bị chặn IP.",
         schema: {
-            url: z.string().url().describe("URL to fetch")
+            url: z.string().url().describe("Địa chỉ URL trang web cần đọc")
         },
         handler: async ({ url }) => {
-            try {
-                const response = await fetch(url, { headers: { 'User-Agent': 'TXAMCP-Bot/1.0' } });
-                const text = await response.text();
-                return { content: [{ type: "text", text: `--- CONTENT FROM ${url} ---\n\n${text.substring(0, 10000)}${text.length > 10000 ? "\n...(truncated)" : ""}` }] };
-            } catch (err) {
-                return { content: [{ type: "text", text: `Failed to fetch URL: ${err.message}` }], isError: true };
+            const response = await fetch(`${HUB_URL}/api/fetch-proxy?api_key=${CONFIG_API_KEY}&url=${encodeURIComponent(url)}`);
+            const data = await response.json();
+            if (!data.success) throw new Error(data.message || "Không thể tải nội dung trang web.");
+            return { content: [{ type: "text", text: data.content }] };
+        }
+    },
+    "github_cloud": {
+        description: "Thực hiện các thao tác trên Github (tạo Issue, Pull Request, xem nhánh, commit) thông qua tài khoản GitHub đã liên kết trên Cloud.",
+        schema: {
+            action: z.enum(["create_issue", "create_pr", "list_issues", "list_prs", "get_repo_info"])
+                .describe("Hành động muốn thực hiện trên GitHub"),
+            repo: z.string()
+                .describe("Đường dẫn repo dạng 'owner/repo' (ví dụ: 'txa-hub/txamcp')"),
+            payload: z.object({
+                title: z.string().optional().describe("Tiêu đề của Issue hoặc PR"),
+                body: z.string().optional().describe("Nội dung mô tả chi tiết"),
+                head: z.string().optional().describe("Nhánh nguồn cần merge (dành cho PR)"),
+                base: z.string().optional().describe("Nhánh đích muốn merge vào (dành cho PR)")
+            }).optional().describe("Các tham số đi kèm tùy theo hành động")
+        },
+        handler: async ({ action, repo, payload }) => {
+            const response = await fetch(`${HUB_URL}/api/github/execute`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json",
+                    "x-api-key": CONFIG_API_KEY 
+                },
+                body: JSON.stringify({ action, repo, payload })
+            });
+
+            if (response.status === 401) {
+                return {
+                    content: [{
+                        type: "text",
+                        text: `🔑 CHƯA ỦY QUYỀN GITHUB:\nBạn cần liên kết tài khoản GitHub của mình với TXAHUB trước khi sử dụng công cụ này.\n\n🔗 Hãy truy cập liên kết sau để cấp quyền: ${HUB_URL}/auth/github`
+                    }],
+                    isError: true
+                };
             }
+
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.message || "Không thể thực thi thao tác trên GitHub.");
+            }
+            return { content: [{ type: "text", text: data.result }] };
+        }
+    },
+    "cloud_memory_save": {
+        description: "Lưu trữ tri thức, cấu hình hoặc quyết định thiết kế của dự án lên Cloud Database của TXAHUB.",
+        schema: {
+            key: z.string().describe("Từ khóa định danh thông tin"),
+            value: z.string().describe("Nội dung thông tin cần lưu trữ")
+        },
+        handler: async ({ key, value }) => {
+            const response = await fetch(`${HUB_URL}/api/cloud-memory/save`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ api_key: CONFIG_API_KEY, key, value })
+            });
+            const data = await response.json();
+            if (!data.success) throw new Error(data.message || "Không thể lưu bộ nhớ lên Cloud.");
+            return { content: [{ type: "text", text: `✅ [Cloud Memory] Đã lưu thành công từ khóa: ${key}` }] };
+        }
+    },
+    "cloud_memory_load": {
+        description: "Tải thông tin tri thức đã lưu trữ từ Cloud Database của TXAHUB.",
+        schema: {
+            key: z.string().optional().describe("Từ khóa cần tải (để trống nếu muốn tải toàn bộ bộ nhớ của dự án)")
+        },
+        handler: async ({ key }) => {
+            const url = key 
+                ? `${HUB_URL}/api/cloud-memory/load?api_key=${CONFIG_API_KEY}&key=${encodeURIComponent(key)}`
+                : `${HUB_URL}/api/cloud-memory/load?api_key=${CONFIG_API_KEY}`;
+            const response = await fetch(url);
+            const data = await response.json();
+            if (!data.success) throw new Error(data.message || "Không thể tải bộ nhớ từ Cloud.");
+            return { content: [{ type: "text", text: JSON.stringify(data.memory, null, 2) }] };
+        }
+    },
+    "cloud_todo_manager": {
+        description: "Quản lý danh sách việc cần làm (TODO) đồng bộ trực tiếp trên Cloud của TXAHUB.",
+        schema: {
+            action: z.enum(["list", "add", "remove", "clear"]).describe("Hành động cần thực hiện"),
+            task: z.string().optional().describe("Mô tả công việc (chỉ dùng cho action 'add')"),
+            index: z.number().optional().describe("Số thứ tự công việc cần xóa (chỉ dùng cho action 'remove')")
+        },
+        handler: async ({ action, task, index }) => {
+            const response = await fetch(`${HUB_URL}/api/cloud-todos`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ api_key: CONFIG_API_KEY, action, task, index })
+            });
+            const data = await response.json();
+            if (!data.success) throw new Error(data.message || "Không thể cập nhật TODO trên Cloud.");
+            return { content: [{ type: "text", text: data.result }] };
+        }
+    },
+    "search_web": {
+        description: "Tìm kiếm thông tin trực tuyến trên Google/Bing qua Cloud API của TXAHUB.",
+        schema: {
+            query: z.string().describe("Từ khóa cần tìm kiếm trên internet")
+        },
+        handler: async ({ query }) => {
+            const response = await fetch(`${HUB_URL}/api/search?api_key=${CONFIG_API_KEY}&query=${encodeURIComponent(query)}`);
+            const data = await response.json();
+            if (!data.success) throw new Error(data.message || "Tìm kiếm thất bại.");
+            return { content: [{ type: "text", text: data.results }] };
         }
     },
     "read_dir": {
         description: "Liệt kê danh sách file trong thư mục với thông tin chi tiết.",
         schema: {
-            dirPath: z.string().default(".").describe("Directory path")
+            dirPath: z.string().default(".").describe("Directory path"),
+            allow_external_access: z.boolean().optional().describe("Set to true to allow reading directories outside the project root. User must explicitly approve this action.")
         },
-        handler: async ({ dirPath }) => {
-            const abs = getAbsolutePath(dirPath);
+        handler: async ({ dirPath, allow_external_access }) => {
+            const abs = getAbsolutePath(dirPath, allow_external_access || false);
             const files = await fs.readdir(abs, { withFileTypes: true });
             const list = files.map(f => `${f.isDirectory() ? "📁" : "📄"} ${f.name}`).join("\n");
             return { content: [{ type: "text", text: `Contents of ${dirPath}:\n\n${list}` }] };
@@ -1078,10 +1197,11 @@ const TOOL_IMPLEMENTATIONS = {
     "code_metrics": {
         description: "Phân tích chỉ số code (Số dòng, độ phức tạp cơ bản).",
         schema: {
-            filePath: z.string().describe("File to analyze")
+            filePath: z.string().describe("File to analyze"),
+            allow_external_access: z.boolean().optional().describe("Set to true to allow analyzing files outside the project root. User must explicitly approve this action.")
         },
-        handler: async ({ filePath }) => {
-            const abs = getAbsolutePath(filePath);
+        handler: async ({ filePath, allow_external_access }) => {
+            const abs = getAbsolutePath(filePath, allow_external_access || false);
             const content = await fs.readFile(abs, "utf-8");
             const lines = content.split("\n");
             const nonBlank = lines.filter(l => l.trim().length > 0).length;

@@ -2,7 +2,7 @@
     "name": "txamcp-vscode",
     "displayName": "Txa MCP — AI Context Management",
     "description": "Professional MCP server integration for AI-powered IDEs. Provides persistent memory, TODOs, project auditing, and 31+ developer tools.",
-    "version": "3.4.13",
+    "version": "3.4.14",
     "publisher": "txahub",
     "icon": "icon.png",
     "engines": {
@@ -40,7 +40,7 @@
                 "txamcp.apiKey": {
                     "type": "string",
                     "default": "",
-                    "markdownDescription": "🔑 API Key or OAuth Code for TXAHUB. Paste your key or code here.\n\n[🔗 Sign In / Authenticate](command:txamcp.login) | [🔴 Sign Out / Logout](command:txamcp.logout)",
+                    "markdownDescription": "🔑 **API Key** or **OAuth Code** for TXAHUB\n\nPaste your key or authorization code here, then restart the server.\n\n---\n**Account Actions:**\n- [🔗 Sign In / Authenticate](command:txamcp.login)\n- [🔴 Sign Out / Logout](command:txamcp.logout)\n- [📊 Open Dashboard](command:txamcp.openDashboard)",
                     "order": 1
                 },
                 "txamcp.hubUrl": {
