@@ -19,7 +19,6 @@ npm install -g txamcp
 ### Option 2: Install VS Code Extension
 For VS Code, Cursor, Windsurf, and other VS Code-based IDEs, install the official extension:
 - **Open VSX**: [https://open-vsx.org/extension/txahub/txamcp-vscode](https://open-vsx.org/extension/txahub/txamcp-vscode)
-- **VS Code Marketplace**: Search for "Txa MCP — AI Context Management"
 
 The extension provides:
 - 🎨 Full GUI status monitoring
