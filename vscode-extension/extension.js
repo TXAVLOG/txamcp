@@ -753,6 +753,8 @@ async function loginToHub(context) {
     let isAuthorized = false;
     /** @type {NodeJS.Timeout | null | undefined} */
     let pollInterval = undefined;
+    /** @type {NodeJS.Timeout | null | undefined} */
+    let fileCheckInterval = undefined;
     /** @type {http.Server | null | undefined} */
     let localServer = undefined;
 
@@ -760,6 +762,10 @@ async function loginToHub(context) {
         if (pollInterval) {
             clearInterval(pollInterval);
             pollInterval = null;
+        }
+        if (fileCheckInterval) {
+            clearInterval(fileCheckInterval);
+            fileCheckInterval = null;
         }
         if (localServer) {
             try {
@@ -880,9 +886,36 @@ async function loginToHub(context) {
                 }
             }
         } catch (e) {
-            // Quietly ignore polling network errors (network blips)
+            const errMsg = e instanceof Error ? e.message : String(e);
+            outputChannel.appendLine(`[Txa MCP] Polling warning/error: ${errMsg}`);
         }
     }, 2000);
+
+    // 3. Fallback: Watch the global config.json file in case the running server process intercepted the callback
+    const configDir = path.join(os.homedir(), '.txamcp');
+    const configPath = path.join(configDir, 'config.json');
+    let lastKey = '';
+    try {
+        if (fs.existsSync(configPath)) {
+            const currentConfigData = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+            lastKey = currentConfigData.apiKey || '';
+        }
+    } catch (e) {}
+
+    fileCheckInterval = setInterval(() => {
+        if (isAuthorized) return;
+        try {
+            if (fs.existsSync(configPath)) {
+                const currentConfigData = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+                const newKey = currentConfigData.apiKey || '';
+                if (newKey && newKey !== lastKey && newKey.startsWith('txamcp-') && newKey.length === 63) {
+                    isAuthorized = true;
+                    cleanup();
+                    onAuthSuccess(newKey);
+                }
+            }
+        } catch (e) {}
+    }, 1000);
 
     // Show a progress indicator that can be cancelled
     vscode.window.withProgress({
@@ -906,7 +939,7 @@ async function loginToHub(context) {
 
         return new Promise((resolve) => {
             const checkTimer = setInterval(() => {
-                if (isAuthorized || !pollInterval) {
+                if (isAuthorized || (!pollInterval && !fileCheckInterval)) {
                     clearInterval(checkTimer);
                     resolve(null);
                 }
