@@ -645,6 +645,7 @@ let isAuthPromptVisible = false;
 /**
  * Show a VS Code prompt informing the user about an auth failure
  * @param {vscode.ExtensionContext} context
+ * @param {string} [message]
  */
 function showAuthErrorPrompt(context, message) {
     if (isAuthPromptVisible) return;
