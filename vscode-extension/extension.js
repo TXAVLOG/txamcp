@@ -35,7 +35,7 @@ function activate(context) {
         vscode.commands.registerCommand('txamcp.stopServer', stopServer),
         vscode.commands.registerCommand('txamcp.restartServer', () => restartServer(context)),
         vscode.commands.registerCommand('txamcp.showStatus', showStatus),
-        vscode.commands.registerCommand('txamcp.login', loginToHub),
+        vscode.commands.registerCommand('txamcp.login', () => loginToHub(context)),
         vscode.commands.registerCommand('txamcp.logout', logoutFromHub),
         vscode.commands.registerCommand('txamcp.openDashboard', openDashboard)
     );
@@ -551,8 +551,9 @@ async function getPublicIP() {
 
 /**
  * Login to TXAHUB via browser SSO or terminal fallback
+ * @param {vscode.ExtensionContext} context
  */
-async function loginToHub() {
+async function loginToHub(context) {
     const config = vscode.workspace.getConfiguration('txamcp');
     const currentKey = /** @type {string} */ (config.get('apiKey', ''));
     const trimmedKey = currentKey.trim();
@@ -612,8 +613,10 @@ async function loginToHub() {
     outputChannel.appendLine(`[Txa MCP] Waiting for authorization... (Request ID: ${requestId})`);
 
     let isAuthorized = false;
-    let pollInterval;
-    let localServer;
+    /** @type {NodeJS.Timeout | null | undefined} */
+    let pollInterval = undefined;
+    /** @type {http.Server | null | undefined} */
+    let localServer = undefined;
 
     const cleanup = () => {
         if (pollInterval) {
@@ -695,6 +698,9 @@ async function loginToHub() {
         localServer = null;
     }
 
+    /**
+     * @param {string} apiKeyVal
+     */
     const onAuthSuccess = (apiKeyVal) => {
         outputChannel.appendLine('[Txa MCP] ✔ Authentication successful!');
         config.update('apiKey', apiKeyVal, vscode.ConfigurationTarget.Global).then(() => {
