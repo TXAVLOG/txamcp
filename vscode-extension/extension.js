@@ -4,6 +4,8 @@ const { spawn, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
+const http = require('http');
 
 /** @type {import('child_process').ChildProcess | null} */
 let serverProcess = null;
@@ -498,6 +500,51 @@ function showStatus() {
 }
 
 /**
+ * Decrypt data using AES-128-ECB with key 'txahub'
+ * @param {string} data
+ * @param {string} [key]
+ * @returns {string}
+ */
+function decrypt(data, key = 'txahub') {
+    if (!data) return data;
+    try {
+        const keyBuf = Buffer.alloc(16, 0);
+        keyBuf.write(key);
+        const decipher = crypto.createDecipheriv('aes-128-ecb', keyBuf, null);
+        let decrypted = decipher.update(data, 'base64', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+    } catch (e) {
+        return data;
+    }
+}
+
+/**
+ * Get public IP address (with fallback)
+ * @returns {Promise<string>}
+ */
+async function getPublicIP() {
+    return new Promise((resolve) => {
+        const https = require('https');
+        https.get('https://api.ipify.org', (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => resolve(data.trim()));
+        }).on('error', () => {
+            const nets = os.networkInterfaces();
+            for (const name of Object.keys(nets)) {
+                for (const net of nets[name]) {
+                    if (net.family === 'IPv4' && !net.internal) {
+                        return resolve(net.address);
+                    }
+                }
+            }
+            resolve('unknown');
+        });
+    });
+}
+
+/**
  * Login to TXAHUB via browser SSO or terminal fallback
  */
 async function loginToHub() {
@@ -520,58 +567,201 @@ async function loginToHub() {
     }
     
     const hubUrl = config.get('hubUrl', 'https://txahub.click');
-    const state = Math.random().toString(36).substring(2, 15);
     
-    // Open external browser for standard authorization.
-    // The web app can redirect back to vscode://txahub.txamcp-vscode/auth?key=... or antigravity://txahub.txamcp-vscode/auth?key=...
-    vscode.env.openExternal(vscode.Uri.parse(`${hubUrl}/auth/antigravity?client=antigravity&state=${state}`));
+    outputChannel.appendLine('[Txa MCP] Initiating SSO auth request via Hub API...');
     
-    outputChannel.appendLine('[Txa MCP] Opening Web Authentication SSO...');
-    outputChannel.appendLine('[Txa MCP] Waiting for authorization callback...');
+    const computerName = `${os.hostname()} (Extension)`;
+    let ipAddress = 'unknown';
+    try {
+        ipAddress = await getPublicIP();
+    } catch (e) {}
+
+    let requestId = '';
+    let authUrl = '';
     
-    const progressOptions = {
-        location: vscode.ProgressLocation.Notification,
-        title: 'Txa MCP: Waiting for authorization...',
-        cancellable: false
-    };
-    
-    vscode.window.withProgress(progressOptions, async (progress) => {
-        progress.report({ message: 'Complete the login in your browser. This window will auto-close upon success.' });
-        
-        // Wait up to 5 minutes for authorization
-        return new Promise((resolve) => {
-            const timeout = setTimeout(() => {
-                outputChannel.appendLine('[Txa MCP] Authorization timeout. You can manually paste the API key in settings.');
-                resolve(null);
-            }, 300000); // 5 minutes
-            
-            // The deep link handler will update config and restart server
-            const disposable = vscode.workspace.onDidChangeConfiguration(e => {
-                if (e.affectsConfiguration('txamcp.apiKey')) {
-                    const newKey = /** @type {string} */ (vscode.workspace.getConfiguration('txamcp').get('apiKey', ''));
-                    if (newKey && newKey.startsWith('txamcp-')) {
-                        clearTimeout(timeout);
-                        disposable.dispose();
-                        resolve(null);
-                    }
-                }
-            });
+    try {
+        const res = await fetch(`${hubUrl}/api/auth/cli/request`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                computer_name: computerName,
+                ip_address: ipAddress
+            })
         });
-    });
-    
-    vscode.window.showInformationMessage(
-        'Browser opened for authentication. Having issues? Try CLI fallback.',
-        'CLI Login Fallback', 'Manual Key Entry'
-    ).then(action => {
-        if (action === 'CLI Login Fallback') {
-            const terminal = vscode.window.createTerminal('Txa MCP Login');
-            terminal.show();
-            terminal.sendText('txa login');
-        } else if (action === 'Manual Key Entry') {
-            vscode.commands.executeCommand('workbench.action.openSettings', 'txamcp.apiKey');
+        const data = await res.json();
+        if (!data.success) {
+            vscode.window.showErrorMessage(`Txa MCP: Failed to initiate login request: ${data.message || 'Unknown error'}`);
+            return;
+        }
+        requestId = data.request_id;
+        authUrl = data.auth_url;
+    } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Txa MCP: Network error: ${errMsg}`);
+        return;
+    }
+
+    // Open browser for authentication
+    vscode.env.openExternal(vscode.Uri.parse(authUrl));
+    outputChannel.appendLine(`[Txa MCP] Opened authentication URL: ${authUrl}`);
+    outputChannel.appendLine(`[Txa MCP] Waiting for authorization... (Request ID: ${requestId})`);
+
+    let isAuthorized = false;
+    let pollInterval;
+    let localServer;
+
+    const cleanup = () => {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+        if (localServer) {
+            try {
+                localServer.close();
+            } catch (e) {}
+            localServer = null;
+        }
+    };
+
+    // 1. Start a temporary HTTP server on port 3636 to receive local callback
+    const port = 3636;
+    localServer = http.createServer(async (req, res) => {
+        const url = new URL(req.url || '', `http://localhost:${port}`);
+        if (url.pathname === '/callback') {
+            const status = url.searchParams.get('status');
+            const key = url.searchParams.get('api_key');
+            
+            if (status === 'success' && key) {
+                const decryptedKey = decrypt(decodeURIComponent(key));
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(`
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="utf-8">
+                        <title>✓ Authentication Successful - TXAMCP</title>
+                        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+                        <script src="https://cdn.tailwindcss.com"></script>
+                        <style>
+                            body { font-family: 'Outfit', sans-serif; background-color: #020617; }
+                            .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+                        </style>
+                    </head>
+                    <body class="flex items-center justify-center min-h-screen">
+                        <div class="glass p-12 rounded-[2.5rem] shadow-2xl max-w-lg w-full text-center border-emerald-500/20">
+                            <h1 class="text-4xl font-black text-white mb-4">✓ SUCCESS!</h1>
+                            <p class="text-slate-400 text-lg mb-6">You have successfully authorized Txa MCP Extension.</p>
+                            <p class="text-slate-500 text-sm">You can close this window now.</p>
+                        </div>
+                        <script>setTimeout(() => window.close(), 3000);</script>
+                    </body>
+                    </html>
+                `);
+                
+                if (!isAuthorized) {
+                    isAuthorized = true;
+                    cleanup();
+                    onAuthSuccess(decryptedKey);
+                }
+            } else {
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(`
+                    <!DOCTYPE html>
+                    <html>
+                    <body style="background-color:#020617;color:#fff;text-align:center;padding-top:100px;font-family:sans-serif;">
+                        <h1>Cancelled</h1>
+                        <p>Authorization was cancelled.</p>
+                    </body>
+                    </html>
+                `);
+                cleanup();
+            }
         }
     });
+
+    localServer.on('error', (err) => {
+        outputChannel.appendLine(`[Txa MCP] Local HTTP callback server error: ${err.message}. Falling back entirely to polling.`);
+        localServer = null;
+    });
+
+    try {
+        localServer.listen(port);
+    } catch (e) {
+        localServer = null;
+    }
+
+    const onAuthSuccess = (apiKeyVal) => {
+        outputChannel.appendLine('[Txa MCP] ✔ Authentication successful!');
+        config.update('apiKey', apiKeyVal, vscode.ConfigurationTarget.Global).then(() => {
+            vscode.window.showInformationMessage(
+                '✅ Txa MCP: Successfully authenticated! Restarting server...',
+                'View Status'
+            ).then(action => {
+                if (action === 'View Status') {
+                    vscode.commands.executeCommand('txamcp.showStatus');
+                }
+            });
+            syncSettingsToGlobalConfig();
+            updateAuthCommands();
+            restartServer(context);
+        });
+    };
+
+    // 2. Start polling the API endpoint in parallel (fallback / primary for custom IDE environments)
+    pollInterval = setInterval(async () => {
+        if (isAuthorized) return;
+        try {
+            const pollRes = await fetch(`${hubUrl}/api/auth/cli/poll?request_id=${requestId}`);
+            const pollData = await pollRes.json();
+            
+            if (pollData.error === 'EXPIRED' || pollData.success === false) {
+                cleanup();
+                vscode.window.showErrorMessage('Txa MCP: Authorization request expired. Please try again.');
+            } else if (pollData.status === 'authorized') {
+                if (!isAuthorized) {
+                    isAuthorized = true;
+                    cleanup();
+                    const decryptedKey = decrypt(pollData.api_key);
+                    onAuthSuccess(decryptedKey);
+                }
+            } else if (pollData.status === 'cancelled') {
+                cleanup();
+                vscode.window.showWarningMessage('Txa MCP: Authorization request cancelled.');
+            }
+        } catch (e) {
+            // Quietly ignore polling network errors (network blips)
+        }
+    }, 2000);
+
+    // Show a progress indicator that can be cancelled
+    vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Txa MCP: Authenticating...',
+        cancellable: true
+    }, async (progress, token) => {
+        token.onCancellationRequested(() => {
+            outputChannel.appendLine('[Txa MCP] User cancelled auth waiting.');
+            cleanup();
+            fetch(`${hubUrl}/api/auth/cli/cancel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ request_id: requestId })
+            }).catch(() => {});
+        });
+
+        progress.report({ message: 'Please complete the login in your browser.' });
+
+        return new Promise((resolve) => {
+            const checkTimer = setInterval(() => {
+                if (isAuthorized || !pollInterval) {
+                    clearInterval(checkTimer);
+                    resolve(null);
+                }
+            }, 500);
+        });
+    });
 }
+
 
 /**
  * Open TXAHUB dashboard in browser

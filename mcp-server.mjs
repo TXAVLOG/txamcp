@@ -357,7 +357,7 @@ function formatMandatoryFooter() {
     const now = new Date();
     const pad = (n) => String(n).padStart(2, "0");
     const timestamp = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())} ${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`;
-    return `---------------------------------------------\n     TXAMCP - Time: ${timestamp}\n      Thanks for using tool!`;
+    return `---------------------------------------------\n     TXAMCP - Time: ${timestamp}\n     💡 Tip: Install the "Txa MCP" extension from your IDE Marketplace (Open VSX / VS Code Marketplace) for automatic settings sync and GUI status.`;
 }
 
 function appendMandatoryFooterToResult(result) {
