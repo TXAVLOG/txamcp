@@ -6,7 +6,7 @@ import os from "os";
 import { fileURLToPath } from "url";
 import chalk from "chalk";
 import boxen from "boxen";
-import { exec } from "child_process";
+import { exec, execSync } from "child_process";
 import http from "http";
 import https from "https";
 import { URL } from "url";
@@ -648,6 +648,33 @@ async function setup() {
     ));
   } else {
     log.warn("No compatible IDEs detected on this system.");
+  }
+
+  // Automatic extension installation from Open VSX
+  console.log("");
+  log.step(chalk.bold("Checking and installing VS Code Extension for detected IDEs..."));
+  
+  const extInstallers = [
+    { name: "VS Code", bin: "code" },
+    { name: "VSCodium", bin: "codium" },
+    { name: "Cursor", bin: "cursor" },
+    { name: "Windsurf", bin: "windsurf" },
+    { name: "Trae", bin: "trae" }
+  ];
+
+  const execSyncOpt = { stdio: 'ignore', windowsHide: true };
+
+  for (const item of extInstallers) {
+    try {
+      const checkCmd = os.platform() === 'win32' ? `where ${item.bin}` : `which ${item.bin}`;
+      execSync(checkCmd, execSyncOpt);
+      
+      log.info(`Installing "Txa MCP" extension for ${chalk.bold.cyan(item.name)}...`);
+      execSync(`${item.bin} --install-extension txahub.txamcp-vscode`, { stdio: 'inherit', windowsHide: true });
+      log.success(`Successfully installed extension for ${item.name}!`);
+    } catch (e) {
+      // Quietly ignore if not found or fails
+    }
   }
 }
 
