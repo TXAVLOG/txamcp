@@ -401,8 +401,24 @@ async function startServer(context) {
     serverProcess.stderr?.on('data', (data) => {
         const msg = data.toString().trim();
         outputChannel.appendLine(msg);
-        if (msg.includes('🔑 TXAMCP AUTH') || msg.includes('Startup Auth Failed')) {
-            showAuthErrorPrompt(context);
+        if (msg.includes('🔑 TXAMCP AUTH') || msg.includes('Startup Auth Failed') || msg.includes('KEY_EXPIRED') || msg.includes('KEY_REVOKED') || msg.includes('KEY_NOT_FOUND')) {
+            let friendlyMessage = 'Txa MCP: Authentication failed. Please authenticate with Txa Hub.';
+            
+            if (msg.includes('KEY_EXPIRED') || msg.includes('expired') || msg.includes('hết hạn')) {
+                friendlyMessage = 'Txa MCP: API Key has expired. Please authenticate with Txa Hub to renew your key.';
+            } else if (msg.includes('KEY_REVOKED') || msg.includes('revoked') || msg.includes('thu hồi') || msg.includes('vô hiệu hóa')) {
+                friendlyMessage = 'Txa MCP: API Key has been revoked or deactivated. Please check your dashboard.';
+            } else if (msg.includes('KEY_NOT_FOUND') || msg.includes('không tồn tại')) {
+                friendlyMessage = 'Txa MCP: API Key is invalid or does not exist. Please check your settings.';
+            } else if (msg.includes('LIMIT_EXCEEDED') || msg.includes('vượt giới hạn') || msg.includes('giới hạn')) {
+                friendlyMessage = '🚫 Txa MCP: Monthly request quota limit exceeded. Please upgrade your plan.';
+            } else if (msg.includes('ACCOUNT_LOCKED') || msg.includes('bị khóa')) {
+                friendlyMessage = '🔒 Txa MCP: Account has been locked. Please contact support.';
+            } else if (msg.includes('missing') || msg.includes('Missing API Key')) {
+                friendlyMessage = 'Txa MCP: API Key is missing. Please authenticate with Txa Hub.';
+            }
+            
+            showAuthErrorPrompt(context, friendlyMessage);
         }
     });
 
@@ -630,12 +646,12 @@ let isAuthPromptVisible = false;
  * Show a VS Code prompt informing the user about an auth failure
  * @param {vscode.ExtensionContext} context
  */
-function showAuthErrorPrompt(context) {
+function showAuthErrorPrompt(context, message) {
     if (isAuthPromptVisible) return;
     isAuthPromptVisible = true;
 
     vscode.window.showErrorMessage(
-        'Txa MCP: Authentication failed or API Key has expired. Please authenticate with Txa Hub.',
+        message || 'Txa MCP: Authentication failed or API Key has expired. Please authenticate with Txa Hub.',
         'Authenticate Web SSO',
         'Configure Settings',
         'Dismiss'
