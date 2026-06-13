@@ -1,6 +1,6 @@
 // @ts-check
 const vscode = require('vscode');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -285,6 +285,7 @@ function syncSettingsToGlobalConfig() {
 
         fs.writeFileSync(configPath, JSON.stringify(existingConfig, null, 2), 'utf-8');
         outputChannel.appendLine('[Txa MCP] ✔ Synced API Key to global config.');
+        syncToGeminiMcpConfig();
     } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         outputChannel.appendLine(`[Txa MCP] ⚠ Could not sync settings: ${errMsg}`);
@@ -327,7 +328,18 @@ function buildEnvFromSettings() {
  * @returns {string | null}
  */
 function findServerScript() {
-    // 1. Check global npm installation
+    // 1. Try to query npm root -g dynamically to support custom npm prefixes, NVM, etc.
+    try {
+        const npmRoot = execSync('npm root -g', { encoding: 'utf8', timeout: 2000, windowsHide: true }).trim();
+        if (npmRoot) {
+            const dynamicPath = path.join(npmRoot, 'txamcp', 'mcp-server.mjs');
+            if (fs.existsSync(dynamicPath)) return dynamicPath;
+        }
+    } catch (e) {
+        // Ignore and fallback to hardcoded paths
+    }
+
+    // 2. Check global npm installation (hardcoded defaults)
     const globalPaths = [
         path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'node_modules', 'txamcp', 'mcp-server.mjs'),
         // Linux/Mac global
@@ -339,7 +351,7 @@ function findServerScript() {
         if (fs.existsSync(p)) return p;
     }
 
-    // 2. Check workspace
+    // 3. Check workspace
     if (vscode.workspace.workspaceFolders) {
         for (const folder of vscode.workspace.workspaceFolders) {
             const localPath = path.join(folder.uri.fsPath, 'node_modules', 'txamcp', 'mcp-server.mjs');
@@ -767,6 +779,72 @@ function saveActiveState(filePath) {
     } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         outputChannel.appendLine(`[Txa MCP] Error saving runtime state: ${errMsg}`);
+    }
+}
+/**
+ * Automatically register/sync the Txa MCP server configuration to the Gemini IDE config folder.
+ */
+function syncToGeminiMcpConfig() {
+    const serverScript = findServerScript();
+    if (!serverScript) {
+        outputChannel.appendLine('[Txa MCP] ⚠ Cannot sync to Gemini: MCP server script not found.');
+        return;
+    }
+
+    const config = vscode.workspace.getConfiguration('txamcp');
+    const apiKey = (/** @type {string} */ (config.get('apiKey', ''))).trim();
+    const hubUrl = config.get('hubUrl', 'https://txahub.click');
+    const requireAddRoot = config.get('requireAddRoot', false) ? '1' : '0';
+
+    const homeDir = os.homedir();
+    const configPaths = [
+        path.join(homeDir, '.gemini', 'config', 'mcp_config.json'),
+        path.join(homeDir, '.gemini', 'antigravity-ide', 'config', 'mcp_config.json'),
+        path.join(homeDir, '.gemini', 'antigravity', 'config', 'mcp_config.json')
+    ];
+
+    for (const configPath of configPaths) {
+        try {
+            const parentDir = path.dirname(configPath);
+            if (!fs.existsSync(parentDir)) {
+                // If .gemini folder itself exists, but config directory doesn't, we can create it
+                const geminiBase = path.join(homeDir, '.gemini');
+                if (!fs.existsSync(geminiBase)) continue;
+                fs.mkdirSync(parentDir, { recursive: true });
+            }
+
+            /** @type {any} */
+            let mcpConfig = { mcpServers: {} };
+            if (fs.existsSync(configPath)) {
+                try {
+                    mcpConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+                } catch (e) {
+                    outputChannel.appendLine(`[Txa MCP] ⚠ Error parsing ${configPath}, rewriting...`);
+                }
+            }
+
+            if (!mcpConfig.mcpServers) {
+                mcpConfig.mcpServers = {};
+            }
+
+            mcpConfig.mcpServers["Txa_MCP"] = {
+                command: "node",
+                args: [serverScript],
+                env: {
+                    API_KEY: apiKey,
+                    HUB_URL: hubUrl,
+                    TXAMCP_PROJECT_ROOT: "${workspaceFolder}",
+                    TXAMCP_ACTIVE_FILE: "${file}",
+                    TXAMCP_REQUIRE_ADD_ROOT: requireAddRoot
+                }
+            };
+
+            fs.writeFileSync(configPath, JSON.stringify(mcpConfig, null, 2), 'utf-8');
+            outputChannel.appendLine(`[Txa MCP] ✔ Registered/Updated server configuration in Gemini: ${configPath}`);
+        } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            outputChannel.appendLine(`[Txa MCP] ⚠ Could not write configuration to ${configPath}: ${errMsg}`);
+        }
     }
 }
 
