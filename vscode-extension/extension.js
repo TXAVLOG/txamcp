@@ -694,18 +694,20 @@ async function loginToHub(context) {
     const currentKey = /** @type {string} */ (config.get('apiKey', ''));
     const trimmedKey = currentKey.trim();
 
-    // Check if already logged in with a valid API key
+    // Check if already logged in with an API key
     if (trimmedKey && trimmedKey.startsWith('txamcp-') && trimmedKey.length === 63) {
         const action = await vscode.window.showWarningMessage(
-            'You are already logged in. Sign out first to switch accounts.',
-            'View Status', 'Sign Out', 'Cancel'
+            'You have an active API Key configured. Do you want to sign in again to switch accounts or refresh your session?',
+            'Re-authenticate', 'Sign Out', 'Cancel'
         );
-        if (action === 'View Status') {
-            vscode.commands.executeCommand('txamcp.showStatus');
-        } else if (action === 'Sign Out') {
+        if (action === 'Sign Out') {
             await logoutFromHub();
+            return;
+        } else if (action === 'Re-authenticate') {
+            outputChannel.appendLine('[Txa MCP] Re-authenticating session...');
+        } else {
+            return;
         }
-        return;
     }
     
     const hubUrl = config.get('hubUrl', 'https://txahub.click');
