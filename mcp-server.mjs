@@ -45,6 +45,13 @@ try {
 let USER_CONTEXT = null;
 
 async function verifyWithHub() {
+    try {
+        if (existsSync(globalConfigPath)) {
+            const config = JSON.parse(readFileSync(globalConfigPath, "utf-8"));
+            if (config.apiKey) CONFIG_API_KEY = config.apiKey;
+        }
+    } catch (err) { }
+
     if (!CONFIG_API_KEY) {
         throw new Error("🔑 TXAMCP AUTH: API Key is missing. Please run 'txa login' first.");
     }

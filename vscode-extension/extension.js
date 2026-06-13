@@ -775,8 +775,8 @@ async function loginToHub(context) {
         }
     };
 
-    // 1. Start a temporary HTTP server on port 3636 to receive local callback
-    const port = 3636;
+    // 1. Start a temporary HTTP server on port 6767 to receive local callback
+    const port = 6767;
     localServer = http.createServer(async (req, res) => {
         const url = new URL(req.url || '', `http://localhost:${port}`);
         if (url.pathname === '/callback') {

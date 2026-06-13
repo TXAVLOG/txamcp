@@ -146,7 +146,7 @@ async function login(apiKey) {
       }
 
       const { request_id, auth_url } = data;
-      const port = 3636;
+      const port = 6767;
       let poll;
       let statusInterval;
 
@@ -354,14 +354,14 @@ async function login(apiKey) {
  
       server.on('error', async (err) => {
         if (err.code === 'EADDRINUSE') {
-          console.log(chalk.yellow("\n  ⚠ Port 3636 is occupied. Attempting to free port..."));
+          console.log(chalk.yellow("\n  ⚠ Port 6767 is occupied. Attempting to free port..."));
           await killProcessOnPort(port);
           
           try {
             server.listen(port);
-            console.log(chalk.green("  ✔ Port 3636 successfully freed and bound."));
+            console.log(chalk.green("  ✔ Port 6767 successfully freed and bound."));
           } catch (retryErr) {
-            console.log(chalk.gray("  ℹ Could not free port 3636. Using background polling flow..."));
+            console.log(chalk.gray("  ℹ Could not free port 6767. Using background polling flow..."));
           }
         } else {
           log.error("Login Server Error: " + err.message);
