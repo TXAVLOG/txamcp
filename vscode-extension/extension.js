@@ -576,7 +576,7 @@ async function loginToHub(context) {
     
     outputChannel.appendLine('[Txa MCP] Initiating SSO auth request via Hub API...');
     
-    const computerName = `${os.hostname()} (Extension)`;
+    const computerName = `${vscode.env.appName} (${os.hostname()})`;
     let ipAddress = 'unknown';
     try {
         ipAddress = await getPublicIP();
