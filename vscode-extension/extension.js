@@ -532,10 +532,15 @@ async function getPublicIP() {
             res.on('end', () => resolve(data.trim()));
         }).on('error', () => {
             const nets = os.networkInterfaces();
-            for (const name of Object.keys(nets)) {
-                for (const net of nets[name]) {
-                    if (net.family === 'IPv4' && !net.internal) {
-                        return resolve(net.address);
+            if (nets) {
+                for (const name of Object.keys(nets)) {
+                    const netList = nets[name];
+                    if (netList) {
+                        for (const net of netList) {
+                            if (net.family === 'IPv4' && !net.internal) {
+                                return resolve(net.address);
+                            }
+                        }
                     }
                 }
             }
@@ -714,19 +719,21 @@ async function loginToHub() {
             const pollRes = await fetch(`${hubUrl}/api/auth/cli/poll?request_id=${requestId}`);
             const pollData = await pollRes.json();
             
-            if (pollData.error === 'EXPIRED' || pollData.success === false) {
-                cleanup();
-                vscode.window.showErrorMessage('Txa MCP: Authorization request expired. Please try again.');
-            } else if (pollData.status === 'authorized') {
-                if (!isAuthorized) {
-                    isAuthorized = true;
+            if (pollData) {
+                if (pollData.error === 'EXPIRED' || pollData.success === false) {
                     cleanup();
-                    const decryptedKey = decrypt(pollData.api_key);
-                    onAuthSuccess(decryptedKey);
+                    vscode.window.showErrorMessage('Txa MCP: Authorization request expired. Please try again.');
+                } else if (pollData.status === 'authorized') {
+                    if (!isAuthorized) {
+                        isAuthorized = true;
+                        cleanup();
+                        const decryptedKey = decrypt(pollData.api_key);
+                        onAuthSuccess(decryptedKey);
+                    }
+                } else if (pollData.status === 'cancelled') {
+                    cleanup();
+                    vscode.window.showWarningMessage('Txa MCP: Authorization request cancelled.');
                 }
-            } else if (pollData.status === 'cancelled') {
-                cleanup();
-                vscode.window.showWarningMessage('Txa MCP: Authorization request cancelled.');
             }
         } catch (e) {
             // Quietly ignore polling network errors (network blips)
@@ -739,15 +746,17 @@ async function loginToHub() {
         title: 'Txa MCP: Authenticating...',
         cancellable: true
     }, async (progress, token) => {
-        token.onCancellationRequested(() => {
-            outputChannel.appendLine('[Txa MCP] User cancelled auth waiting.');
-            cleanup();
-            fetch(`${hubUrl}/api/auth/cli/cancel`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ request_id: requestId })
-            }).catch(() => {});
-        });
+        if (token) {
+            token.onCancellationRequested(() => {
+                outputChannel.appendLine('[Txa MCP] User cancelled auth waiting.');
+                cleanup();
+                fetch(`${hubUrl}/api/auth/cli/cancel`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ request_id: requestId })
+                }).catch(() => {});
+            });
+        }
 
         progress.report({ message: 'Please complete the login in your browser.' });
 
