@@ -16,10 +16,14 @@ let outputChannel;
 /** @type {vscode.StatusBarItem} */
 let statusBarItem;
 
+/** @type {vscode.ExtensionContext | null} */
+let extensionContext = null;
+
 /**
  * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
+    extensionContext = context;
     outputChannel = vscode.window.createOutputChannel('Txa MCP');
 
     // Status bar
@@ -34,7 +38,7 @@ function activate(context) {
         vscode.commands.registerCommand('txamcp.startServer', () => startServer(context)),
         vscode.commands.registerCommand('txamcp.stopServer', stopServer),
         vscode.commands.registerCommand('txamcp.restartServer', () => restartServer(context)),
-        vscode.commands.registerCommand('txamcp.showStatus', showStatus),
+        vscode.commands.registerCommand('txamcp.showStatus', () => showStatus(context)),
         vscode.commands.registerCommand('txamcp.login', () => loginToHub(context)),
         vscode.commands.registerCommand('txamcp.logout', logoutFromHub),
         vscode.commands.registerCommand('txamcp.openDashboard', openDashboard)
@@ -479,23 +483,155 @@ async function restartServer(context) {
 }
 
 /**
- * Show current server status
+ * Show current server status and configuration menu
+ * @param {vscode.ExtensionContext} context
  */
-function showStatus() {
+/**
+ * Show current server status and configuration menu
+ * @param {vscode.ExtensionContext} [context]
+ */
+function showStatus(context) {
+    const ctx = context || extensionContext;
+    if (!ctx) {
+        outputChannel.appendLine('[Txa MCP] Error: Extension context is not available for showStatus.');
+        return;
+    }
     const config = vscode.workspace.getConfiguration('txamcp');
     const isRunning = serverProcess !== null && !serverProcess.killed;
+    const hasKey = !!config.get('apiKey');
+    const gatewayEnabled = config.get('enableHttpGateway', false);
+    const autoStart = config.get('autoStartServer', true);
     
-    const items = [
-        `Status: ${isRunning ? '🟢 Running' : '🔴 Stopped'}`,
-        `API Key: ${config.get('apiKey') ? '✔ Configured' : '❌ Not set'}`,
-        `Hub URL: ${config.get('hubUrl', 'https://txahub.click')}`,
-        `HTTP Gateway: ${config.get('enableHttpGateway', false) ? 'Enabled' : 'Disabled'}`,
-        `Auto Start: ${config.get('autoStartServer', true) ? 'Yes' : 'No'}`,
-    ];
+    /** @type {vscode.QuickPickItem[]} */
+    const items = [];
+
+    if (hasKey) {
+        // Line 1: Stop and Start (correspondingly auto-displayed) & Reset
+        if (isRunning) {
+            items.push({
+                label: `🔴 Server: Running (Click to Stop / Restart)`,
+                description: `Stop / Restart (Reset)`,
+                detail: `Manage the active Txa MCP server process`
+            });
+        } else {
+            items.push({
+                label: `🟢 Server: Stopped (Click to Start)`,
+                description: `Start`,
+                detail: `Start the Txa MCP server process`
+            });
+        }
+
+        // Line 2: Logout
+        items.push({
+            label: `🚪 Logout`,
+            description: `Sign Out`,
+            detail: `Clear your active API Key session and disconnect from Txa Hub`
+        });
+
+        // Line 3: Show Details
+        items.push({
+            label: `📝 Show Details / Dashboard`,
+            description: `Open Hub Web Console`,
+            detail: `Hub URL: ${config.get('hubUrl', 'https://txahub.click')}`
+        });
+
+        // Line 4: HTTP Gateway toggle
+        items.push({
+            label: `🔌 HTTP Gateway: ${gatewayEnabled ? 'Enabled' : 'Disabled'}`,
+            description: `Click to Toggle`,
+            detail: `Annotation: Enables the local HTTP REST API gateway on port ${config.get('httpPort', 3636)}`
+        });
+
+        // Line 5: Auto Start toggle
+        items.push({
+            label: `⚙️ Auto Start: ${autoStart ? 'Yes' : 'No'}`,
+            description: `Click to Toggle`,
+            detail: `Annotation: Automatically start the Txa MCP server when VS Code opens`
+        });
+    } else {
+        // Line 1: Login / Authenticate
+        items.push({
+            label: `🔑 Login / Authenticate`,
+            description: `Connect`,
+            detail: `Authorize VS Code with Txa Hub via Web SSO`
+        });
+
+        // Line 2: Show Details
+        items.push({
+            label: `📝 Show Details / Dashboard`,
+            description: `Open Hub Web Console`,
+            detail: `Hub URL: ${config.get('hubUrl', 'https://txahub.click')}`
+        });
+
+        // Line 3: HTTP Gateway toggle
+        items.push({
+            label: `🔌 HTTP Gateway: ${gatewayEnabled ? 'Enabled' : 'Disabled'}`,
+            description: `Click to Toggle`,
+            detail: `Annotation: Enables the local HTTP REST API gateway on port ${config.get('httpPort', 3636)}`
+        });
+
+        // Line 4: Auto Start toggle
+        items.push({
+            label: `⚙️ Auto Start: ${autoStart ? 'Yes' : 'No'}`,
+            description: `Click to Toggle`,
+            detail: `Annotation: Automatically start the Txa MCP server when VS Code opens`
+        });
+    }
 
     vscode.window.showQuickPick(items, {
         title: 'Txa MCP Status',
-        placeHolder: 'Server status and configuration overview'
+        placeHolder: 'Select an option to manage settings or server state'
+    }).then(selected => {
+        if (!selected) return;
+
+        const label = selected.label;
+
+        if (label.includes('Server:')) {
+            if (isRunning) {
+                const statusItems = ['🛑 Stop Server', '🔄 Restart Server (Reset)'];
+                vscode.window.showQuickPick(statusItems, {
+                    title: 'Manage Server Process'
+                }).then(action => {
+                    if (action === '🛑 Stop Server') {
+                        vscode.commands.executeCommand('txamcp.stopServer');
+                    } else if (action === '🔄 Restart Server (Reset)') {
+                        vscode.commands.executeCommand('txamcp.restartServer');
+                    }
+                });
+            } else {
+                vscode.commands.executeCommand('txamcp.startServer');
+            }
+        } 
+        else if (label.includes('Logout')) {
+            vscode.window.showWarningMessage(
+                'Are you sure you want to log out and clear your session?',
+                'Sign Out', 'Cancel'
+            ).then(action => {
+                if (action === 'Sign Out') {
+                    vscode.commands.executeCommand('txamcp.logout');
+                }
+            });
+        } 
+        else if (label.includes('Login / Authenticate')) {
+            vscode.commands.executeCommand('txamcp.login');
+        }
+        else if (label.includes('Show Details / Dashboard')) {
+            vscode.commands.executeCommand('txamcp.openDashboard');
+        } 
+        else if (label.includes('HTTP Gateway')) {
+            const newGateway = !gatewayEnabled;
+            config.update('enableHttpGateway', newGateway, vscode.ConfigurationTarget.Global).then(() => {
+                vscode.window.showInformationMessage(`HTTP Gateway is now ${newGateway ? 'Enabled' : 'Disabled'}.`);
+                onConfigChanged(ctx);
+            });
+        } 
+        else if (label.includes('Auto Start')) {
+            const newAutoStart = !autoStart;
+            config.update('autoStartServer', newAutoStart, vscode.ConfigurationTarget.Global).then(() => {
+                vscode.window.showInformationMessage(`Auto Start is now ${newAutoStart ? 'Yes' : 'No'}.`);
+                onConfigChanged(ctx);
+            });
+        }
     });
 }
 
