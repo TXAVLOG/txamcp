@@ -9,10 +9,23 @@ Professional MCP Server & CLI for Local AI Context Management. Part of the [TXA 
 - **Windows Optimized**: Native PowerShell support and high-speed file searching.
 
 ## Installation
+
+### Option 1: Install via npm (Recommended)
 Install globally via npm:
 ```bash
 npm install -g txamcp
 ```
+
+### Option 2: Install VS Code Extension
+For VS Code, Cursor, Windsurf, and other VS Code-based IDEs, install the official extension:
+- **Open VSX**: [https://open-vsx.org/extension/txahub/txamcp-vscode](https://open-vsx.org/extension/txahub/txamcp-vscode)
+- **VS Code Marketplace**: Search for "Txa MCP — AI Context Management"
+
+The extension provides:
+- 🎨 Full GUI status monitoring
+- 🔐 One-click browser SSO login
+- 🔄 Automatic API key synchronization
+- 📁 Real-time project root auto-detection
 
 ## Quick Start
 0. **Account**: Create an account at [txahub.click](https://txahub.click) to get your API Key.

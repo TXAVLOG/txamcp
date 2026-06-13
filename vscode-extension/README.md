@@ -1,5 +1,7 @@
 # Txa MCP — VS Code Extension
 
+[![Open VSX](https://img.shields.io/badge/Open%20VSX-Install-blue?logo=Eclipse%20IDE&logoColor=white)](https://open-vsx.org/extension/txahub/txamcp-vscode)
+
 Professional MCP server integration for AI-powered IDEs.
 
 ## Features
@@ -37,6 +39,14 @@ All settings are available under `Settings > Extensions > Txa MCP`:
 | `txamcp.logLevel` | Server log verbosity | `info` |
 
 ## Installation
+
+### From Open VSX (Recommended)
+Install directly from Open VSX Registry:
+- **Link**: [https://open-vsx.org/extension/txahub/txamcp-vscode](https://open-vsx.org/extension/txahub/txamcp-vscode)
+- **Compatible with**: VS Code, Cursor, Windsurf, Trae, and other VS Code-based IDEs
+
+### From VS Code Marketplace
+Search for "Txa MCP — AI Context Management" in the VS Code Extensions marketplace.
 
 ### From VSIX (Local)
 ```bash
