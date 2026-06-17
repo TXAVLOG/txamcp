@@ -360,8 +360,21 @@ function findServerScript() {
     // 3. Check workspace
     if (vscode.workspace.workspaceFolders) {
         for (const folder of vscode.workspace.workspaceFolders) {
+            // Check direct mcp-server.mjs (if workspace is txamcp itself)
+            const directPath = path.join(folder.uri.fsPath, 'mcp-server.mjs');
+            if (fs.existsSync(directPath)) return directPath;
+
+            // Check if txamcp is a subdirectory (e.g., in a mono-repo or parent directory)
+            const subDirPath = path.join(folder.uri.fsPath, 'txamcp', 'mcp-server.mjs');
+            if (fs.existsSync(subDirPath)) return subDirPath;
+
+            // Check node_modules
             const localPath = path.join(folder.uri.fsPath, 'node_modules', 'txamcp', 'mcp-server.mjs');
             if (fs.existsSync(localPath)) return localPath;
+
+            // Check node_modules inside subdirectory
+            const subDirLocalPath = path.join(folder.uri.fsPath, 'txamcp', 'node_modules', 'txamcp', 'mcp-server.mjs');
+            if (fs.existsSync(subDirLocalPath)) return subDirLocalPath;
         }
     }
 
