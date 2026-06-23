@@ -599,8 +599,17 @@ const TOOL_IMPLEMENTATIONS = {
             for (const file of sqlFiles) {
                 if (!file.trim() || !existsSync(file)) continue;
                 const content = await fs.readFile(file, "utf-8");
-                const tables = content.match(/CREATE TABLE\s+[`"']?(\w+)[`"']?/gi) || [];
-                results += `\nFile: ${path.basename(file)}\nTables found: ${tables.map(t => t.split(' ').pop()).join(', ') || "None"}\n`;
+                const tables = [];
+                const regex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([`"'\w\.\[\]\-]+)/gi;
+                let match;
+                while ((match = regex.exec(content)) !== null) {
+                    let tableName = match[1].replace(/[`"'\s\[\]]/g, '');
+                    if (tableName.includes('.')) {
+                        tableName = tableName.split('.').pop();
+                    }
+                    tables.push(tableName);
+                }
+                results += `\nFile: ${path.basename(file)}\nTables found: ${tables.join(', ') || "None"}\n`;
             }
             return { content: [{ type: "text", text: results }] };
         }
