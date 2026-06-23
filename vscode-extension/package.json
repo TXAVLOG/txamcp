@@ -2,7 +2,7 @@
     "name": "txamcp-vscode",
     "displayName": "Txa MCP — AI Context Management",
     "description": "Professional MCP server integration for AI-powered IDEs. Provides persistent memory, TODOs, project auditing, and 31+ developer tools.",
-    "version": "3.4.21",
+    "version": "3.4.22",
     "publisher": "txahub",
     "icon": "icon.png",
     "engines": {
@@ -83,10 +83,15 @@
                 "txamcp.logLevel": {
                     "type": "string",
                     "default": "info",
-                    "enum": ["error", "warn", "info", "debug"],
+                    "enum": [
+                        "error",
+                        "warn",
+                        "info",
+                        "debug"
+                    ],
                     "enumDescriptions": [
                         "Only show errors",
-                        "Show warnings and errors", 
+                        "Show warnings and errors",
                         "Show info, warnings, and errors (recommended)",
                         "Show all messages including debug output"
                     ],
