@@ -155,12 +155,53 @@ async function login(apiKey) {
   if (await fileExists(configPath)) {
     console.log("");
     log.warn(`You are already logged in.`);
+    let config;
     try {
-      const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
-      console.log(chalk.gray(`Currently active session: ${chalk.bold.white(config.user?.username || "Unknown")}`));
-    } catch (e) { }
-    console.log(chalk.gray(`To switch accounts, please run '${chalk.cyan("txa logout")}' first.\n`));
-    return;
+      config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+    } catch (e) {}
+
+    const currentUsername = config?.user?.username;
+    if (currentUsername && currentUsername !== "Unknown") {
+      console.log(chalk.gray(`Currently active session: ${chalk.bold.white(currentUsername)}`));
+      console.log(chalk.gray(`To switch accounts, please run '${chalk.cyan("txa logout")}' first.\n`));
+      return;
+    }
+
+    if (config?.apiKey) {
+      log.step("Session username missing. Synchronizing with server...");
+      try {
+        const hubUrl = await getHubUrl();
+        const response = await fetch(`${hubUrl}/api/verify-key`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ api_key: config.apiKey, cli_token: config.cliToken }),
+          signal: AbortSignal.timeout(5000)
+        });
+        const data = await safeParseJson(response);
+        if (data.success) {
+          config.user = data.user;
+          config.lastSync = new Date().toISOString();
+          await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+          log.success(`Session synchronized successfully!`);
+          console.log(chalk.gray(`Currently active session: ${chalk.bold.white(data.user.username)}`));
+          console.log(chalk.gray(`To switch accounts, please run '${chalk.cyan("txa logout")}' first.\n`));
+          return;
+        } else {
+          log.error("Local session is invalid or expired.");
+          console.log(chalk.gray(`Please run '${chalk.cyan("txa logout")}' first, then login again.\n`));
+          return;
+        }
+      } catch (e) {
+        const maskedKey = config.apiKey.substring(0, 12) + "...";
+        console.log(chalk.gray(`Currently active session: ${chalk.bold.white("Unknown")} (License: ${maskedKey})`));
+        console.log(chalk.gray(`To switch accounts, please run '${chalk.cyan("txa logout")}' first.\n`));
+        return;
+      }
+    } else {
+      console.log(chalk.gray(`Currently active session: ${chalk.bold.white("Unknown")}`));
+      console.log(chalk.gray(`To switch accounts, please run '${chalk.cyan("txa logout")}' first.\n`));
+      return;
+    }
   }
 
   if (!apiKey) {

@@ -2,7 +2,7 @@
     "name": "txamcp-vscode",
     "displayName": "Txa MCP — AI Context Management",
     "description": "Professional MCP server integration for AI-powered IDEs. Provides persistent memory, TODOs, project auditing, and 31+ developer tools.",
-    "version": "4.0.1",
+    "version": "4.0.2",
     "publisher": "txahub",
     "icon": "icon.png",
     "engines": {
