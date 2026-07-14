@@ -117,6 +117,18 @@ async function safeParseJson(response) {
   }
 }
 
+async function getHubUrl() {
+  if (process.env.HUB_URL) return process.env.HUB_URL;
+  try {
+    const configPath = path.resolve(os.homedir(), ".txamcp", "config.json");
+    if (await fileExists(configPath)) {
+      const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+      if (config.hubUrl) return config.hubUrl;
+    }
+  } catch (e) {}
+  return "https://txahub.click";
+}
+
 async function getPublicIP() {
   return new Promise((resolve) => {
     https.get('https://api.ipify.org', (res) => {
@@ -158,7 +170,8 @@ async function login(apiKey) {
     const ipAddress = await getPublicIP();
 
     try {
-      const res = await fetch("https://txahub.click/api/auth/cli/request", {
+      const hubUrl = await getHubUrl();
+      const res = await fetch(`${hubUrl}/api/auth/cli/request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -425,7 +438,8 @@ async function login(apiKey) {
         process.stdout.write('\r' + ' '.repeat(80) + '\r'); // Clear status line
         console.log('\n\n  ' + chalk.yellow('!') + ' Aborting login flow...');
         try {
-          await fetch("https://txahub.click/api/auth/cli/cancel", {
+          const hubUrl = await getHubUrl();
+          await fetch(`${hubUrl}/api/auth/cli/cancel`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ request_id: request_id }),
@@ -461,7 +475,8 @@ async function login(apiKey) {
         } catch (e) { }
 
         try {
-          const pollRes = await fetch(`https://txahub.click/api/auth/cli/poll?request_id=${request_id}`);
+          const hubUrl = await getHubUrl();
+          const pollRes = await fetch(`${hubUrl}/api/auth/cli/poll?request_id=${request_id}`);
           const pollData = await safeParseJson(pollRes);
           
           if (pollData.error === 'EXPIRED' || pollData.success === false) {
@@ -510,7 +525,8 @@ async function completeLogin(apiKey, token = null) {
 
   log.step(chalk.bold("Verifying credentials with server..."));
   try {
-    const response = await fetch("https://txahub.click/api/verify-key", {
+    const hubUrl = await getHubUrl();
+    const response = await fetch(`${hubUrl}/api/verify-key`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ api_key: apiKey, cli_token: token })
@@ -578,6 +594,7 @@ async function getKiroProjectConfig() {
 
 async function setup() {
   log.step(chalk.bold("Configuring MCP interfaces for IDEs..."));
+  const hubUrl = await getHubUrl();
   const configPath = path.resolve(os.homedir(), ".txamcp", "config.json");
   let apiKey = "";
   try {
@@ -624,7 +641,7 @@ async function setup() {
             "args": ["mcp-server"],
             "env": {
               "API_KEY": apiKey,
-              "HUB_URL": "https://txahub.click"
+              "HUB_URL": hubUrl
             },
             "disabled": false,
             "autoApprove": []
@@ -635,7 +652,7 @@ async function setup() {
             "args": [serverPath],
             "env": {
               "API_KEY": apiKey,
-              "HUB_URL": "https://txahub.click",
+              "HUB_URL": hubUrl,
               "TXAMCP_PROJECT_ROOT": "${workspaceFolder}",
               "TXAMCP_ACTIVE_FILE": "${file}",
               "TXAMCP_REQUIRE_ADD_ROOT": "1"
@@ -712,7 +729,8 @@ async function handleGetConfig() {
   log.step(chalk.bold("Fetching account metadata..."));
   const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
   try {
-    const res = await fetch("https://txahub.click/api/verify-key", {
+    const hubUrl = await getHubUrl();
+    const res = await fetch(`${hubUrl}/api/verify-key`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ api_key: config.apiKey, cli_token: config.cliToken })
