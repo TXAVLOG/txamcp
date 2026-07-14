@@ -40,7 +40,8 @@ async function safeParseJson(response) {
     try {
         return await response.json();
     } catch (err) {
-        throw new Error(`Failed to parse JSON response: ${err.message}`);
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(`Failed to parse JSON response: ${message}`);
     }
 }
 
