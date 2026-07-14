@@ -23,7 +23,7 @@ function sendRequest(method, params, id) {
 }
 
 let responsesReceived = 0;
-const expectedResponses = 6;
+const expectedResponses = 7;
 
 server.stdout.on("data", (data) => {
   const lines = data.toString().split("\n");
@@ -39,7 +39,8 @@ server.stdout.on("data", (data) => {
                          response.id === 3 ? "search_code" :
                          response.id === 4 ? "list_workspaces" :
                          response.id === 5 ? "fix_minimal (Prompt)" :
-                         response.id === 6 ? "github_cloud" : "unknown";
+                         response.id === 6 ? "github_cloud (list_branches)" :
+                         response.id === 7 ? "github_cloud (list_collaborators)" : "unknown";
 
         let content = "";
         if (response.result.content) {
@@ -81,5 +82,6 @@ server.on("spawn", () => {
     sendRequest("tools/call", { name: "list_workspaces", arguments: {} }, 4);
     sendRequest("prompts/get", { name: "fix_minimal", arguments: { issue: "test", code: "test" } }, 5);
     sendRequest("tools/call", { name: "github_cloud", arguments: { action: "list_branches", repo: "TXAVLOG/txamcp" } }, 6);
+    sendRequest("tools/call", { name: "github_cloud", arguments: { action: "list_collaborators", repo: "TXAVLOG/txamcp" } }, 7);
   }, 1000);
 });

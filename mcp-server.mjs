@@ -1065,7 +1065,13 @@ const TOOL_IMPLEMENTATIONS = {
                 "list_workflow_runs",
                 "trigger_workflow",
                 "create_or_update_secret",
-                "delete_secret"
+                "delete_secret",
+                "list_collaborators",
+                "add_collaborator",
+                "remove_collaborator",
+                "list_projects",
+                "create_project",
+                "get_commit_statuses"
             ]).describe("Hành động muốn thực hiện trên GitHub"),
             repo: z.string()
                 .describe("Đường dẫn repo dạng 'owner/repo' (ví dụ: 'txa-hub/txamcp')"),
@@ -1080,7 +1086,10 @@ const TOOL_IMPLEMENTATIONS = {
                 ref: z.string().optional().describe("Tên nhánh/tag để chạy workflow (dành cho trigger_workflow)"),
                 inputs: z.record(z.any()).optional().describe("Các input parameters cho workflow dispatch (dành cho trigger_workflow)"),
                 secret_name: z.string().optional().describe("Tên của secret (dành cho Actions secrets)"),
-                secret_value: z.string().optional().describe("Giá trị của secret (dành cho Actions secrets)")
+                secret_value: z.string().optional().describe("Giá trị của secret (dành cho Actions secrets)"),
+                username: z.string().optional().describe("GitHub username (dành cho collaborator)"),
+                permission: z.string().optional().describe("Quyền cấp cho collaborator (dành cho collaborator)"),
+                name: z.string().optional().describe("Tên của Project (dành cho projects)")
             }).optional().describe("Các tham số đi kèm tùy theo hành động")
         },
         handler: async ({ action, repo, payload }) => {
