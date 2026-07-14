@@ -1054,15 +1054,33 @@ const TOOL_IMPLEMENTATIONS = {
     "github_cloud": {
         description: "Thực hiện các thao tác trên Github (tạo Issue, Pull Request, xem nhánh, commit) thông qua tài khoản GitHub đã liên kết trên Cloud.",
         schema: {
-            action: z.enum(["create_issue", "create_pr", "list_issues", "list_prs", "get_repo_info"])
-                .describe("Hành động muốn thực hiện trên GitHub"),
+            action: z.enum([
+                "create_issue",
+                "create_pr",
+                "list_issues",
+                "list_prs",
+                "get_repo_info",
+                "list_branches",
+                "create_branch",
+                "list_workflow_runs",
+                "trigger_workflow",
+                "create_or_update_secret",
+                "delete_secret"
+            ]).describe("Hành động muốn thực hiện trên GitHub"),
             repo: z.string()
                 .describe("Đường dẫn repo dạng 'owner/repo' (ví dụ: 'txa-hub/txamcp')"),
             payload: z.object({
                 title: z.string().optional().describe("Tiêu đề của Issue hoặc PR"),
                 body: z.string().optional().describe("Nội dung mô tả chi tiết"),
                 head: z.string().optional().describe("Nhánh nguồn cần merge (dành cho PR)"),
-                base: z.string().optional().describe("Nhánh đích muốn merge vào (dành cho PR)")
+                base: z.string().optional().describe("Nhánh đích muốn merge vào (dành cho PR)"),
+                branch: z.string().optional().describe("Tên nhánh mới (dành cho create_branch)"),
+                sha: z.string().optional().describe("Commit SHA gốc để tạo nhánh (dành cho create_branch)"),
+                workflow_id: z.string().optional().describe("Tên file hoặc ID của workflow (dành cho trigger_workflow)"),
+                ref: z.string().optional().describe("Tên nhánh/tag để chạy workflow (dành cho trigger_workflow)"),
+                inputs: z.record(z.any()).optional().describe("Các input parameters cho workflow dispatch (dành cho trigger_workflow)"),
+                secret_name: z.string().optional().describe("Tên của secret (dành cho Actions secrets)"),
+                secret_value: z.string().optional().describe("Giá trị của secret (dành cho Actions secrets)")
             }).optional().describe("Các tham số đi kèm tùy theo hành động")
         },
         handler: async ({ action, repo, payload }) => {
