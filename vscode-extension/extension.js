@@ -20,6 +20,31 @@ let statusBarItem;
 let extensionContext = null;
 
 /**
+ * Helper to safely parse JSON responses from TXAHUB.
+ * @param {any} response
+ */
+async function safeParseJson(response) {
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+        let errorMsg = `Server returned status ${response.status}`;
+        try {
+            const text = await response.text();
+            if (text.trim().startsWith("<!DOCTYPE") || text.includes("<html")) {
+                errorMsg = `Server error (${response.status}). The server returned an HTML error page (possibly Cloudflare or web server error).`;
+            } else if (text.trim()) {
+                errorMsg = `Server returned status ${response.status}: ${text.substring(0, 200)}`;
+            }
+        } catch (e) { }
+        throw new Error(errorMsg);
+    }
+    try {
+        return await response.json();
+    } catch (err) {
+        throw new Error(`Failed to parse JSON response: ${err.message}`);
+    }
+}
+
+/**
  * @param {vscode.ExtensionContext} context
  */
 function activate(context) {
@@ -81,7 +106,7 @@ function activate(context) {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ code })
                         })
-                        .then(res => res.json())
+                        .then(res => safeParseJson(res))
                         .then(data => {
                             if (data.success && data.api_key) {
                                 config.update('apiKey', data.api_key, vscode.ConfigurationTarget.Global).then(() => {
@@ -246,7 +271,7 @@ function syncSettingsToGlobalConfig() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ code: apiKey })
         })
-        .then(res => res.json())
+        .then(res => safeParseJson(res))
         .then(data => {
             if (data.success && data.api_key) {
                 outputChannel.appendLine(`[Txa MCP] ✔ Successfully exchanged authorization code for API Key.`);
@@ -745,7 +770,7 @@ async function loginToHub(context) {
                 ip_address: ipAddress
             })
         });
-        const data = await res.json();
+        const data = await safeParseJson(res);
         if (!data.success) {
             vscode.window.showErrorMessage(`Txa MCP: Failed to initiate login request: ${data.message || 'Unknown error'}`);
             return;
@@ -880,7 +905,7 @@ async function loginToHub(context) {
         if (isAuthorized) return;
         try {
             const pollRes = await fetch(`${hubUrl}/api/auth/cli/poll?request_id=${requestId}`);
-            const pollData = await pollRes.json();
+            const pollData = await safeParseJson(pollRes);
             
             if (pollData) {
                 if (pollData.error === 'EXPIRED' || pollData.success === false) {
@@ -1117,7 +1142,7 @@ async function checkForUpdates(serverScript) {
     try {
         outputChannel.appendLine('[Txa MCP] Checking for updates on npm...');
         const res = await fetch('https://registry.npmjs.org/txamcp/latest');
-        const data = await res.json();
+        const data = await safeParseJson(res);
         const latestVer = data.version;
 
         if (latestVer && latestVer !== installedVer) {

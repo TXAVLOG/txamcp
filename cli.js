@@ -90,6 +90,32 @@ function decrypt(data, key = 'txahub') {
   }
 }
 
+/**
+ * Helper to safely parse JSON responses from TXAHUB.
+ * If the response is an HTML error page (e.g. Cloudflare Error 522),
+ * it returns a clean, user-friendly error instead of raw HTML.
+ */
+async function safeParseJson(response) {
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("application/json")) {
+    let errorMsg = `Server returned status ${response.status}`;
+    try {
+      const text = await response.text();
+      if (text.trim().startsWith("<!DOCTYPE") || text.includes("<html")) {
+        errorMsg = `Server error (${response.status}). The server returned an HTML error page (possibly Cloudflare or web server error).`;
+      } else if (text.trim()) {
+        errorMsg = `Server returned status ${response.status}: ${text.substring(0, 200)}`;
+      }
+    } catch (e) { }
+    throw new Error(errorMsg);
+  }
+  try {
+    return await response.json();
+  } catch (err) {
+    throw new Error(`Failed to parse JSON response: ${err.message}`);
+  }
+}
+
 async function getPublicIP() {
   return new Promise((resolve) => {
     https.get('https://api.ipify.org', (res) => {
@@ -139,7 +165,7 @@ async function login(apiKey) {
           ip_address: ipAddress
         })
       });
-      const data = await res.json();
+      const data = await safeParseJson(res);
       if (!data.success) {
         log.error("Failed to initiate login request: " + (data.message || "Unknown error"));
         return;
@@ -435,7 +461,7 @@ async function login(apiKey) {
 
         try {
           const pollRes = await fetch(`https://txahub.click/api/auth/cli/poll?request_id=${request_id}`);
-          const pollData = await pollRes.json();
+          const pollData = await safeParseJson(pollRes);
           
           if (pollData.error === 'EXPIRED' || pollData.success === false) {
             process.stdout.write('\r' + ' '.repeat(80) + '\r');
@@ -488,7 +514,7 @@ async function completeLogin(apiKey, token = null) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ api_key: apiKey, cli_token: token })
     });
-    const data = await response.json();
+    const data = await safeParseJson(response);
 
     if (data.success) {
       await fs.mkdir(configDir, { recursive: true });
@@ -690,7 +716,7 @@ async function handleGetConfig() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ api_key: config.apiKey, cli_token: config.cliToken })
     });
-    const data = await res.json();
+    const data = await safeParseJson(res);
     if (data.success) {
       const usage = data.user.request_count;
       const total = data.user.requests_total || 5000;
