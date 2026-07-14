@@ -733,7 +733,7 @@ async function handleGetConfig() {
     } else {
       log.error("Session expired. Please re-authenticate.");
     }
-  } catch (e) { log.error("Server connection timeout."); }
+  } catch (e) { log.error(e.message); }
 }
 
 const args = process.argv.slice(2);
