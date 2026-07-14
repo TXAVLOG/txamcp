@@ -1114,7 +1114,15 @@ const TOOL_IMPLEMENTATIONS = {
 
             const data = await safeParseJson(response);
             if (!data.success) {
-                throw new Error(data.message || "Không thể thực thi thao tác trên GitHub.");
+                let errMsg = data.message || "Không thể thực thi thao tác trên GitHub.";
+                if (errMsg.includes("Resource not accessible by integration")) {
+                    errMsg += "\n\n👉 Gợi ý: Lỗi này thường do tài khoản GitHub liên kết chưa cấp quyền truy cập (OAuth scope hoặc Repository access) cho repository này, hoặc repository không tồn tại/bị ẩn.";
+                } else if (errMsg.includes("Bad credentials") || errMsg.includes("Unauthorized") || response.status === 401) {
+                    errMsg += "\n\n👉 Gợi ý: Token GitHub đã hết hạn hoặc không hợp lệ. Vui lòng truy cập trang cá nhân của bạn trên TXAHUB để liên kết lại tài khoản GitHub.";
+                } else if (errMsg.includes("Not Found") || errMsg.includes("404")) {
+                    errMsg += "\n\n👉 Gợi ý: Không tìm thấy repository hoặc tài nguyên được yêu cầu. Hãy kiểm tra lại tên repository dạng 'owner/repo' (ví dụ: 'TXAVLOG/txamcp') đã chính xác chưa.";
+                }
+                throw new Error(errMsg);
             }
             return { content: [{ type: "text", text: data.result }] };
         }
