@@ -44,6 +44,32 @@ try {
 
 let USER_CONTEXT = null;
 
+/**
+ * Helper to safely parse JSON responses from TXAHUB.
+ * If the response is an HTML error page (e.g. Cloudflare Error 522),
+ * it returns a clean, user-friendly error instead of raw HTML.
+ */
+async function safeParseJson(response) {
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+        let errorMsg = `Server returned status ${response.status}`;
+        try {
+            const text = await response.text();
+            if (text.trim().startsWith("<!DOCTYPE") || text.includes("<html")) {
+                errorMsg = `Server error (${response.status}). The server returned an HTML error page (possibly Cloudflare or web server error).`;
+            } else if (text.trim()) {
+                errorMsg = `Server returned status ${response.status}: ${text.substring(0, 200)}`;
+            }
+        } catch (e) { }
+        throw new Error(errorMsg);
+    }
+    try {
+        return await response.json();
+    } catch (err) {
+        throw new Error(`Failed to parse JSON response: ${err.message}`);
+    }
+}
+
 async function verifyWithHub() {
     try {
         if (existsSync(globalConfigPath)) {
@@ -63,7 +89,7 @@ async function verifyWithHub() {
             body: JSON.stringify({ api_key: CONFIG_API_KEY })
         });
 
-        const data = await response.json();
+        const data = await safeParseJson(response);
         if (!data.success) {
             const code = data.code || "UNKNOWN_ERROR";
             const reason = data.message || "Authentication failed";
@@ -414,7 +440,7 @@ async function registerTools(serverInstance) {
             const response = await fetch(`${HUB_URL}/api/tools?api_key=${CONFIG_API_KEY}`, {
                 signal: AbortSignal.timeout(5000)
             });
-            const data = await response.json();
+            const data = await safeParseJson(response);
 
             if (data.success && data.tools) {
                 ENABLED_TOOLS_CACHE = data.tools.map(t => t.name);
@@ -1019,7 +1045,7 @@ const TOOL_IMPLEMENTATIONS = {
         },
         handler: async ({ url }) => {
             const response = await fetch(`${HUB_URL}/api/fetch-proxy?api_key=${CONFIG_API_KEY}&url=${encodeURIComponent(url)}`);
-            const data = await response.json();
+            const data = await safeParseJson(response);
             if (!data.success) throw new Error(data.message || "Không thể tải nội dung trang web.");
             return { content: [{ type: "text", text: data.content }] };
         }
@@ -1058,7 +1084,7 @@ const TOOL_IMPLEMENTATIONS = {
                 };
             }
 
-            const data = await response.json();
+            const data = await safeParseJson(response);
             if (!data.success) {
                 throw new Error(data.message || "Không thể thực thi thao tác trên GitHub.");
             }
@@ -1077,7 +1103,7 @@ const TOOL_IMPLEMENTATIONS = {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ api_key: CONFIG_API_KEY, key, value })
             });
-            const data = await response.json();
+            const data = await safeParseJson(response);
             if (!data.success) throw new Error(data.message || "Không thể lưu bộ nhớ lên Cloud.");
             return { content: [{ type: "text", text: `✅ [Cloud Memory] Đã lưu thành công từ khóa: ${key}` }] };
         }
@@ -1092,7 +1118,7 @@ const TOOL_IMPLEMENTATIONS = {
                 ? `${HUB_URL}/api/cloud-memory/load?api_key=${CONFIG_API_KEY}&key=${encodeURIComponent(key)}`
                 : `${HUB_URL}/api/cloud-memory/load?api_key=${CONFIG_API_KEY}`;
             const response = await fetch(url);
-            const data = await response.json();
+            const data = await safeParseJson(response);
             if (!data.success) throw new Error(data.message || "Không thể tải bộ nhớ từ Cloud.");
             return { content: [{ type: "text", text: JSON.stringify(data.memory, null, 2) }] };
         }
@@ -1110,7 +1136,7 @@ const TOOL_IMPLEMENTATIONS = {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ api_key: CONFIG_API_KEY, action, task, index })
             });
-            const data = await response.json();
+            const data = await safeParseJson(response);
             if (!data.success) throw new Error(data.message || "Không thể cập nhật TODO trên Cloud.");
             return { content: [{ type: "text", text: data.result }] };
         }
@@ -1122,7 +1148,7 @@ const TOOL_IMPLEMENTATIONS = {
         },
         handler: async ({ query }) => {
             const response = await fetch(`${HUB_URL}/api/search?api_key=${CONFIG_API_KEY}&query=${encodeURIComponent(query)}`);
-            const data = await response.json();
+            const data = await safeParseJson(response);
             if (!data.success) throw new Error(data.message || "Tìm kiếm thất bại.");
             return { content: [{ type: "text", text: data.results }] };
         }
@@ -1261,7 +1287,7 @@ async function getEnabledTools() {
         const response = await fetch(`${HUB_URL}/api/tools?api_key=${CONFIG_API_KEY}`, {
             signal: AbortSignal.timeout(3000)
         });
-        const data = await response.json();
+        const data = await safeParseJson(response);
         if (data.success && data.tools) {
             ENABLED_TOOLS_CACHE = data.tools.map(t => t.name);
             BLOCKED_BY_PLAN_CACHE = data.blocked_by_plan || [];
@@ -1423,7 +1449,7 @@ if (process.env.ENABLE_HTTP_GATEWAY === 'true') {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ api_key: decryptedKey, cli_token: decryptedToken })
                 });
-                const verifyData = await verifyRes.json();
+                const verifyData = await safeParseJson(verifyRes);
                 
                 if (verifyData.success) {
                     await fs.mkdir(configDir, { recursive: true });
